@@ -1,0 +1,31 @@
+{
+  "grid": "tes-albedo-jezero",
+  "quantity": "albedo",
+  "unit": "bolometric albedo, 0–1",
+  "scale": 0.0001,
+  "validRange": [
+    0,
+    1
+  ],
+  "widthPx": 9,
+  "heightPx": 9,
+  "pxPerDeg": 8,
+  "westDeg": 76.75,
+  "northDeg": 18.75,
+  "longitudeDomain": "-180 to 180 east",
+  "encoding": "uint16 little-endian, rows north to south, columns west to east",
+  "noData": 0,
+  "noDataCells": 0,
+  "binMd5": "c0141a27dbc38457c8267ca6c9163d9e",
+  "citation": "Christensen, P. R., et al., 2001, Mars Global Surveyor Thermal Emission Spectrometer experiment: investigation description and surface science results, J. Geophys. Res. 106, 23823–23871; USGS Mars_MGS_TES_Albedo_mosaic_global_7410m (bolometric albedo), 8 px/deg",
+  "source": {
+    "url": "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars_MGS_TES_Albedo_mosaic_global_7410m.tif",
+    "label": "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars_MGS_TES_Albedo_mosaic_global_7410m.lbl",
+    "md5": "a4825f744b36339530b71495ee85eb7c",
+    "note": "matches the MD5 the USGS publishes beside the file"
+  },
+  "resampling": "none: the source cells overlapping the Jezero map box (76.8–77.8°E, 17.7–18.7°N), as they are; stored × 10000, rounded to four decimals",
+  "noDataRule": "a NaN or ISIS special pixel in the source, or a cell centred poleward of 87°",
+  "builtBy": "scripts/build-tes-grids.mjs",
+  "builtOn": "2026-11-05"
+}

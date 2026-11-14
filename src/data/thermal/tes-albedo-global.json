@@ -1,0 +1,31 @@
+{
+  "grid": "tes-albedo-global",
+  "quantity": "albedo",
+  "unit": "bolometric albedo, 0–1",
+  "scale": 0.0001,
+  "validRange": [
+    0,
+    1
+  ],
+  "widthPx": 720,
+  "heightPx": 360,
+  "pxPerDeg": 2,
+  "westDeg": -180,
+  "northDeg": 90,
+  "longitudeDomain": "-180 to 180 east",
+  "encoding": "uint16 little-endian, rows north to south, columns west to east",
+  "noData": 0,
+  "noDataCells": 8640,
+  "binMd5": "488129caf16b4e57a2b8173e0b772435",
+  "citation": "Christensen, P. R., et al., 2001, Mars Global Surveyor Thermal Emission Spectrometer experiment: investigation description and surface science results, J. Geophys. Res. 106, 23823–23871; USGS Mars_MGS_TES_Albedo_mosaic_global_7410m (bolometric albedo), 8 px/deg",
+  "source": {
+    "url": "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars_MGS_TES_Albedo_mosaic_global_7410m.tif",
+    "label": "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars_MGS_TES_Albedo_mosaic_global_7410m.lbl",
+    "md5": "a4825f744b36339530b71495ee85eb7c",
+    "note": "matches the MD5 the USGS publishes beside the file"
+  },
+  "resampling": "nearest: each 0.5° output cell holds the one 8 px/deg source cell containing its centre; nothing averaged; stored × 10000, rounded to four decimals",
+  "noDataRule": "a NaN or ISIS special pixel in the source, or a cell centred poleward of 87°",
+  "builtBy": "scripts/build-tes-grids.mjs",
+  "builtOn": "2026-11-05"
+}

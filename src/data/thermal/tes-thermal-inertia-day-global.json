@@ -1,0 +1,36 @@
+{
+  "grid": "tes-thermal-inertia-day-global",
+  "quantity": "thermalInertia",
+  "unit": "J m^-2 K^-1 s^-1/2",
+  "scale": 1,
+  "validRange": [
+    5,
+    5000
+  ],
+  "widthPx": 720,
+  "heightPx": 360,
+  "pxPerDeg": 2,
+  "westDeg": -180,
+  "northDeg": 90,
+  "longitudeDomain": "-180 to 180 east",
+  "encoding": "uint16 little-endian, rows north to south, columns west to east",
+  "noData": 0,
+  "noDataCells": 25862,
+  "binMd5": "e4b4b6a7d8f4529459d383132b203eb2",
+  "citation": "Putzig, N. E., and Mellon, M. T., 2007, Apparent thermal inertia of Mars from TES, Icarus 191, 68–94, doi 10.1016/j.icarus.2007.05.013; PDS Geosciences \"TES Thermal Inertia Maps\", MGS-M-TES-5-TIMAP-V1.0, GLOBAL_TI_DAY_2007 (dayside), 20 px/deg. An apparent thermal inertia at the TES pass times, not a bulk property",
+  "source": {
+    "url": "https://pds-geosciences.wustl.edu/mgs/mgs-m-tes-5-timap-v1/mgst_9001/data/GLOBAL_TI_DAY_2007.IMG",
+    "label": "https://pds-geosciences.wustl.edu/mgs/mgs-m-tes-5-timap-v1/mgst_9001/data/GLOBAL_TI_DAY_2007.LBL",
+    "md5": "9e364c70b3a0816cce5209af8f202144",
+    "mask": {
+      "url": "https://pds-geosciences.wustl.edu/mgs/mgs-m-tes-5-timap-v1/mgst_9001/data/GLOBAL_TI_MSK_DAY_2007.IMG",
+      "label": "https://pds-geosciences.wustl.edu/mgs/mgs-m-tes-5-timap-v1/mgst_9001/data/GLOBAL_TI_MSK_DAY_2007.LBL",
+      "md5": "0e96ddabd0a8cc1c52bdaf10dbbb9cee"
+    },
+    "note": "MD5 of the files as downloaded; the PDS volume publishes none"
+  },
+  "resampling": "nearest: each 0.5° output cell holds the one 20 px/deg source cell containing its centre; nothing averaged",
+  "noDataRule": "the source's 0 (not derived), a cell its interpolation mask marks as infilled (mask 0), or a cell centred poleward of 87°",
+  "builtBy": "scripts/build-tes-grids.mjs",
+  "builtOn": "2026-11-05"
+}
