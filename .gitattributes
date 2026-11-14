@@ -1,0 +1,15 @@
+# Normalize line endings so the repo behaves identically on macOS, Linux and
+# Windows. Without this, Git on Windows checks out CRLF, which breaks shell
+# scripts with "bad interpreter".
+
+* text=auto eol=lf
+
+# Binary files must never be converted.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
+*.bin  binary
