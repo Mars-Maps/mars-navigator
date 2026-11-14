@@ -1,0 +1,15 @@
+{
+  /*
+   * Type-checks tests/ with the same rules as the app. Vitest strips types
+   * without checking them, so without this project a wrong assertion type or
+   * a stale import in a test would pass CI. src is included too because
+   * the tests import it; it is not emitted (noEmit), so the double pass costs
+   * a second or two and nothing else. The datum check is checked here
+   * too: it is TypeScript that imports src, bundled before it runs.
+   */
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo"
+  },
+  "include": ["src", "tests", "scripts/datum-check.ts"]
+}
