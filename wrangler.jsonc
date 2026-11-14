@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mars-explorer",
+  "compatibility_date": "2026-10-14",
+
+  // Static-assets-only Worker: no server code, just the Vite build output.
+  // Cloudflare removed the Pages creation flow, so a Worker serves the SPA.
+  "assets": {
+    "directory": "./dist",
+    // Every unknown path returns index.html so client-side routing works.
+    "not_found_handling": "single-page-application"
+  },
+
+  // Required by `npx wrangler preview`, which Workers Builds runs for every
+  // non-production branch and pull request. The block may be empty — assets,
+  // compatibility settings and placement stay at the top level.
+  "previews": {},
+
+  "observability": {
+    "enabled": true
+  }
+}
