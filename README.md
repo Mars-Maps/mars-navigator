@@ -8,6 +8,8 @@ every figure on screen says where it comes from.
 **Live:** [marsmaps.space](https://marsmaps.space) · desktop browser, no
 account, no API key.
 
+[![The globe of Mars with Jezero crater marked](docs/images/globe.jpg)](https://marsmaps.space)
+
 ## What it does
 
 - **A 3D globe of Mars.** Four base layers from NASA Mars Trek: satellite,
@@ -31,6 +33,14 @@ account, no API key.
   Martian day, next to the rovers' own measurements at Jezero and Gale; the
   atmosphere's radiation shielding and the local solar time at a point; and
   the sun's height in the sky during the walk.
+
+## A look inside
+
+| | |
+|---|---|
+| ![Landing colours over Jezero crater](docs/images/landing-colours.jpg) **Pick a landing site** on a map coloured by a rating of slope and crater | ![Planned walks with distance, time, energy and slope](docs/images/three-walks.jpg) **The walks compared**, each checked against the mission settings |
+| ![First-person view of the surface with the walk guide](docs/images/surface-view.jpg) **Walk it** on the surface, with the walk guide, stop card and overhead map | ![Perseverance photos near the walk's stops](docs/images/rover-photos.jpg) **The rover's own photos** near the walk's stops, next to the point's temperature and radiation |
+| ![A route across Gale crater with hazards and an elevation profile](docs/images/route.jpg) **A route over real terrain**, with its hazards and elevation profile | |
 
 ## The data
 
@@ -145,3 +155,11 @@ access to them (see `DATA_SOURCES.md`).
 - [`DATA_SOURCES.md`](DATA_SOURCES.md): every external dataset and service, with credits and licences
 - [`DEVELOPMENT.md`](DEVELOPMENT.md): conventions, testing notes and gotchas
 - [`src/components/README.md`](src/components/README.md): design-system usage
+
+## Licence
+
+The code is released under the [MIT licence](LICENSE). The data is not ours
+to license: the NASA, USGS, ESA and other datasets the app reads, the data
+committed in this repository (`src/data/`, `tests/fixtures/`) and the imagery
+in the screenshots keep their own terms and credits, listed in
+[`DATA_SOURCES.md`](DATA_SOURCES.md).
