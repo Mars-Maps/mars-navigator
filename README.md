@@ -1,19 +1,71 @@
-# Mars Explorer
+# Mars Navigator
 
-A desktop web map for planning and walking a route on the surface of Mars, at
-Jezero crater. It opens on a 3D globe drawn from NASA Mars Trek imagery, with
-four switchable base layers (satellite, elevation, thermal, geology), place
-search, measuring and terrain-profile tools, and route planning between
-points with distance, slope, hazard and metabolic-cost figures. Plan a walk
-takes a landing site picked on a map coloured by how flat the ground is,
-mission settings (max slope, samples, energy, duration), and plans three
-scientific walks side by side: over the flat bedrock of the crater floor,
-from a crater rim down to the floor across the geologic map's units, and to
-the Perseverance rover's own waypoints. Each has its sample points, time and
-energy against the settings. A walk is then followed in a first-person surface view built from official elevation
-models and orbital imagery, with a heads-up display, stop cards and the
-Perseverance rover's own photos nearby. Every value on screen is marked as
-official, derived, simulated or unavailable, with its source or method.
+**Plan a walk on Mars, then walk it.** Mars Navigator is a web map of Mars for
+planning and following a route on the surface at Jezero crater, where the
+Perseverance rover landed. It is built on open NASA, USGS and ESA data, and
+every figure on screen says where it comes from.
+
+**Live:** [marsmaps.space](https://marsmaps.space) · desktop browser, no
+account, no API key.
+
+## What it does
+
+- **A 3D globe of Mars.** Four base layers from NASA Mars Trek: satellite,
+  elevation, thermal and geology. Search for a named place, measure a
+  distance, or cut a terrain profile between two points.
+- **Routes over real terrain.** Pick two points and the route search finds a
+  way between them over the elevation model, with its distance, slopes,
+  hazards and the metabolic cost of walking it.
+- **Plan a walk.** Pick a landing site on a map coloured by how flat the
+  ground is, set the mission (maximum slope, samples, energy, duration), and
+  get three scientific walks side by side:
+  - over the flat bedrock of the crater floor;
+  - from a crater rim down to the floor, across the geologic map's units;
+  - to the Perseverance rover's own waypoints.
+
+  Each walk shows its sample points, time and energy against the settings.
+- **Walk it.** Follow the walk in a first-person view of the surface, built
+  from official elevation models and orbital imagery, with a heads-up
+  display, stop cards and the Perseverance rover's own photos taken nearby.
+- **Conditions on the ground.** A modelled surface temperature through the
+  Martian day, next to the rovers' own measurements at Jezero and Gale; the
+  atmosphere's radiation shielding and the local solar time at a point; and
+  the sun's height in the sky during the walk.
+
+## The data
+
+Everything is read from public services at runtime or committed with its
+citation. No API key is needed.
+
+| What | Source |
+|---|---|
+| Base map layers | NASA Solar System Treks (Mars Trek): Viking colour mosaic, MOLA shaded relief, THEMIS day and night infrared, USGS geologic map of Mars (SIM 3292) |
+| Close-up ground imagery | Mars 2020 Terrain Relative Navigation HiRISE (25 cm) and CTX (6 m) orthomosaics of Jezero, USGS; CTX global mosaic, Murray Lab, Caltech |
+| Elevation | The global HRSC–MOLA blended elevation model (ESA/DLR/FU Berlin with NASA and USGS) and the official elevation models of Jezero |
+| Geology of Jezero | USGS geologic map of Jezero crater (SIM 3464) |
+| Rover path and photos | The Perseverance rover's traverse, waypoints and raw images, NASA/JPL-Caltech |
+| Temperature | Modelled from TES thermal inertia and albedo grids (derived, ± 10 K), validated against and shown next to the rovers' measurements: MEDA at Jezero, REMS at Gale |
+| Place names | USGS Gazetteer of Planetary Nomenclature |
+
+The full list, with each product's credit, licence and limits, is in
+[`DATA_SOURCES.md`](DATA_SOURCES.md).
+
+## Scientific integrity
+
+Every value is classified as `OFFICIAL`, `DERIVED`, `SIMULATED` or
+`UNAVAILABLE`, and the interface shows which, with the source or the method.
+Simulated data is always labelled as such. An unknown value is shown as
+unavailable, never as zero or a guess, and a dataset's resolution is treated
+as a limit: the app says what it cannot answer instead of interpolating.
+
+## Team
+
+[@yuryverkhov-afk](https://github.com/yuryverkhov-afk) ·
+[@olezheeee](https://github.com/olezheeee) ·
+[@Kavinshah03](https://github.com/Kavinshah03) ·
+[@aditya300508](https://github.com/aditya300508) ·
+[@chad971](https://github.com/chad971) ·
+[@oreo7382](https://github.com/oreo7382)
 
 ## Tech stack
 
@@ -93,9 +145,3 @@ access to them (see `DATA_SOURCES.md`).
 - [`DATA_SOURCES.md`](DATA_SOURCES.md): every external dataset and service, with credits and licences
 - [`DEVELOPMENT.md`](DEVELOPMENT.md): conventions, testing notes and gotchas
 - [`src/components/README.md`](src/components/README.md): design-system usage
-
-## Scientific integrity
-
-All data values are classified as `OFFICIAL`, `DERIVED`, `SIMULATED` or
-`UNAVAILABLE`. Simulated data is always labelled as such in the interface,
-and an unknown value is shown as unavailable, never as zero or a guess.

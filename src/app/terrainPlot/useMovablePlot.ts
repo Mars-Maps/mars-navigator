@@ -21,7 +21,7 @@ import {
   type Rect,
 } from './plotPlacement'
 
-const STORAGE_KEY = 'mars-explorer.terrain-plot.place'
+const STORAGE_KEY = 'mars-navigator.terrain-plot.place'
 /** The box's height beyond the plot itself (handle, notes), until it is measured. */
 const CHROME_GUESS_PX = 64
 

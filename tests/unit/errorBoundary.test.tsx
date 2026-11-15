@@ -45,7 +45,7 @@ describe('FailedPart', () => {
   })
 
   it('names the app at the root', () => {
-    expect(renderToStaticMarkup(<RootFailure />)).toContain('Mars Explorer failed to load.')
+    expect(renderToStaticMarkup(<RootFailure />)).toContain('Mars Navigator failed to load.')
   })
 })
 

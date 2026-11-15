@@ -36,7 +36,7 @@ function reload(): void {
 export function RootFailure() {
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-canvas">
-      <FailedPart what="Mars Explorer" />
+      <FailedPart what="Mars Navigator" />
     </div>
   )
 }
