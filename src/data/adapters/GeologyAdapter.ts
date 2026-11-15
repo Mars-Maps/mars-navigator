@@ -177,7 +177,8 @@ export async function geologicFeatures(
     lists.push(answer)
   }
   const [points, lines, areas] = lists
-  const out: GeologicFeatures = { points: [], lines: [], areas: [] }
+  // The sheet's own edges: a box reaching past them is answered only inside them.
+  const out: GeologicFeatures = { points: [], lines: [], areas: [], covers: JEZERO_UNITS.sheet }
   for (const [i, f] of points.entries()) {
     const kind = readKind(f)
     const at = readPoint(f.geometry, i)

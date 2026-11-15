@@ -99,9 +99,10 @@ export const HAZARD_DETECTORS: Record<HazardKind, HazardDetector> = {
     'Surface temperature data with local time',
     'Cited human exposure limits',
   ]),
-  // TODO: needs the geologic map's line features along the route.
+  // Not scanned from points alone: a searched route scans its own path with
+  // the map features its search read (searchedRoute's mappedObstacleScan).
   'mapped-obstacle': stub('mapped-obstacle', [
-    'Geologic map line features (ridge crests, rim crests, delta fronts) along the route',
+    'Geologic map features (lines, small craters, ridged ground) along the route',
   ]),
 }
 

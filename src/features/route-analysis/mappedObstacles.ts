@@ -115,12 +115,39 @@ export function mappedObstacleHazards(
 }
 
 /**
+ * The features of several reads as one, each feature once: the boxes of a
+ * route's legs overlap at its stops, so the same crater or ridged area comes
+ * back in both. Two features are the same when their kind and every
+ * coordinate agree. `covers` is not carried: it is each read's own.
+ */
+export function mergeFeatures(reads: readonly GeologicFeatures[]): GeologicFeatures {
+  const coordinates = (cs: readonly MarsCoordinate[]) => cs.map((c) => `${c.latitude},${c.longitudeEast}`).join(' ')
+  const once = <T>(items: readonly T[], key: (item: T) => string): T[] => {
+    const seen = new Set<string>()
+    return items.filter((item) => {
+      const k = key(item)
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
+  }
+  return {
+    points: once(reads.flatMap((r) => r.points), (f) => `${f.kind}|${coordinates([f.at])}`),
+    lines: once(reads.flatMap((r) => r.lines), (f) => `${f.kind}|${coordinates(f.path)}`),
+    areas: once(reads.flatMap((r) => r.areas), (f) => `${f.kind}|${f.rings.map(coordinates).join('/')}`),
+  }
+}
+
+/**
  * What the map marks along a path of several straight stretches (a
- * searched route's leg, turn to turn), in walking order, ids
- * `${idBase}-obstacle-n`: each marked line crossed, each marked crater within
- * CRATER_NEAR_KM of the path (once, where it is nearest), and each place the
- * path enters marked ground from outside it, or starts on it. Worked in one
- * plane at the path's first point, as the search works a leg in one plane.
+ * searched route, turn to turn and stop to stop), in walking order, ids
+ * `${idBase}-obstacle-n`: each marked line crossed; each marked crater within
+ * CRATER_NEAR_KM of the path, once, where it is nearest; and marked ground
+ * where the path starts on it or a stretch that begins outside first enters
+ * it (a stretch that leaves and comes back in is one entry). Crossings and
+ * what is inside are worked in one plane at the path's first point, which
+ * is exact however long the path: the plane is linear in latitude and
+ * longitude. A crater's distance is measured in a plane at the crater.
  */
 export function mappedObstaclesAlongPath(
   path: readonly MarsCoordinate[],
@@ -156,10 +183,13 @@ export function mappedObstaclesAlongPath(
 
   for (const crater of features.points) {
     if (!isKind(OBSTACLE_KINDS.points, crater.kind)) continue
-    const c = p.project(crater.at)
+    // Its own plane: far from the path's start the first plane's east–west scale is off.
+    const local = tangentPlane(crater.at)
+    const c = local.project(crater.at)
+    const around = path.map(local.project)
     let best: { at: number; km: number } | null = null
-    for (let s = 1; s < pts.length; s++) {
-      const near = nearestOnLeg(c, pts[s - 1], pts[s])
+    for (let s = 1; s < around.length; s++) {
+      const near = nearestOnLeg(c, around[s - 1], around[s])
       if (best === null || near.km < best.km) best = { at: s - 1 + near.t, km: near.km }
     }
     if (best === null || best.km > CRATER_NEAR_KM) continue

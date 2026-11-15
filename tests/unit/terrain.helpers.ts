@@ -58,6 +58,10 @@ export interface FixtureOptions {
   mapAreas?: GeologicAreaFeature[]
   /** The map read fails with this reason. */
   mapFails?: string
+  /** The map read fails, with `mapFails` or "Map service down", for the boxes this accepts (one leg of several). */
+  mapFailsFor?: (bounds: { west: number; east: number; south: number; north: number }) => boolean
+  /** The sheet the fixture map covers, as a real map with edges states it. */
+  mapCovers?: { west: number; east: number; south: number; north: number }
   /** The elevation read fails with this reason. */
   demFails?: string
   /** The map's unit polygons; none by default. */
@@ -99,9 +103,18 @@ export function fixtureTerrain(z: (x: number, y: number) => number, options: Fix
     },
     obstacles: (bounds) => {
       boxes.push(bounds)
-      const features: Classified<GeologicFeatures> = options.mapFails
-        ? unavailable(options.mapFails)
-        : official({ points: options.mapPoints ?? [], lines: options.lines ?? [], areas: options.mapAreas ?? [] }, 'fixture map')
+      const fails = options.mapFailsFor ? options.mapFailsFor(bounds) : options.mapFails !== undefined
+      const features: Classified<GeologicFeatures> = fails
+        ? unavailable(options.mapFails ?? 'Map service down')
+        : official(
+            {
+              points: options.mapPoints ?? [],
+              lines: options.lines ?? [],
+              areas: options.mapAreas ?? [],
+              ...(options.mapCovers ? { covers: options.mapCovers } : {}),
+            },
+            'fixture map',
+          )
       return Promise.resolve(features)
     },
     units: () =>

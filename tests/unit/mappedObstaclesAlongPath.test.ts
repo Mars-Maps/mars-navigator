@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GeologicFeatures } from '../../src/domain'
-import { CRATER_NEAR_KM, mappedObstaclesAlongPath } from '../../src/features/route-analysis/mappedObstacles'
+import { CRATER_NEAR_KM, mappedObstaclesAlongPath, mergeFeatures } from '../../src/features/route-analysis/mappedObstacles'
 import { MAP, at, line, xyOf } from './terrain.helpers'
 
 const features = (f: Partial<GeologicFeatures>): GeologicFeatures => ({ points: [], lines: [], areas: [], ...f })
@@ -70,9 +70,23 @@ describe('mappedObstaclesAlongPath', () => {
     }
   })
 
-  it('never names a line through a turn twice, though it touches both stretches there', () => {
-    const through = scan({ lines: [line('delta lobe front', [1, -1], [3, 1])] })
-    expect(through.length).toBeLessThanOrEqual(1)
+  it('names a line crossing the path exactly at its turn once, though it meets both stretches there', () => {
+    // From north-west of the turn to south-east of it: through the corner, from one side of the path to the other.
+    const through = scan({ lines: [line('delta lobe front', [1, 1], [3, -1])] })
+    expect(through).toHaveLength(1)
+    expect(xyOf(through[0].coordinate).x).toBeCloseTo(2, 6)
+    expect(xyOf(through[0].coordinate).y).toBeCloseTo(0, 6)
+  })
+
+  it('measures a crater from the path where the crater is, on a path that starts far away', () => {
+    // 60° of latitude north of the start, the first plane's east–west scale is half the ground's.
+    const north = { latitude: 78, longitudeEast: 77.5 }
+    const kmPerDegLon = (3389.5 * Math.PI) / 180 * Math.cos((78 * Math.PI) / 180)
+    const path = [at(0, 0), north, { latitude: 78, longitudeEast: 77.6 }]
+    const beside = (km: number) => ({ kind: 'small crater', at: { latitude: 78 + km / ((3389.5 * Math.PI) / 180), longitudeEast: 77.55 }, map: MAP })
+    expect(kmPerDegLon * 0.1).toBeGreaterThan(1)
+    expect(mappedObstaclesAlongPath(path, features({ points: [beside(0.08)] }), 'x')).toHaveLength(1)
+    expect(mappedObstaclesAlongPath(path, features({ points: [beside(0.12)] }), 'x')).toHaveLength(0)
   })
 
   it('lists what it finds in walking order across kinds', () => {
@@ -82,5 +96,17 @@ describe('mappedObstaclesAlongPath', () => {
       areas: [ridged(0.5, 1, -1, 1)],
     })
     expect(hazards.map((h) => h.unit)).toEqual(['ridged', 'crest of crater rim', 'small crater'])
+  })
+})
+
+describe('mergeFeatures', () => {
+  it('keeps each feature once across reads whose boxes overlap, and every distinct one', () => {
+    const a = features({ points: [crater(1, 0), crater(2, 0)], lines: [line('crest of crater rim', [0, 0], [1, 1])], areas: [ridged(0, 1, 0, 1)] })
+    const b = features({ points: [crater(2, 0), crater(3, 0)], lines: [line('crest of crater rim', [0, 0], [1, 1]), line('delta lobe front', [0, 0], [1, 1])], areas: [ridged(0, 1, 0, 1), ridged(0, 2, 0, 1)] })
+    const merged = mergeFeatures([a, b])
+    expect(merged.points.map((f) => xyOf(f.at).x).map(Math.round)).toEqual([1, 2, 3])
+    expect(merged.lines.map((f) => f.kind)).toEqual(['crest of crater rim', 'delta lobe front'])
+    expect(merged.areas).toHaveLength(2)
+    expect(mergeFeatures([])).toEqual({ points: [], lines: [], areas: [] })
   })
 })

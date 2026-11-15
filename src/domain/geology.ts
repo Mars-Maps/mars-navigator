@@ -1,4 +1,5 @@
 import type { MarsCoordinate } from './mars'
+import type { SiteBounds } from './site'
 
 /**
  * A published geologic map a unit or feature comes from.
@@ -74,4 +75,11 @@ export interface GeologicFeatures {
   points: GeologicPointFeature[]
   lines: GeologicLineFeature[]
   areas: GeologicAreaFeature[]
+  /**
+   * The ground the map these came from covers, when that is a sheet with
+   * edges: a box asked for that reaches past it is answered only inside it,
+   * so "nothing marked" beyond the sheet is "not mapped". Absent, the whole
+   * box asked for.
+   */
+  covers?: SiteBounds
 }

@@ -97,6 +97,20 @@ describe('HazardsPanel: what the route search kept off the path', () => {
     expect(line).toContain('Steps over 20° (')
   })
 
+  it('says a kind scanned over part of the route was checked in part, never "none found" for it', async () => {
+    const two = { departure: at(0, 0), stops: [at(1, 0)], destination: at(2, 0) }
+    const second = (b: { east: number }) => b.east > at(2.5, 0).longitudeEast
+    const searched = scanned(await planFastest(two, fixtureTerrain(() => 0, { mapFailsFor: second }), signal))
+    const line = words(heading(renderToStaticMarkup(<HazardsPanel route={searched} />)))
+    expect(line).toContain('Scanned for radiation: none found')
+    expect(line).toContain('mapped obstacle checked on part of the route only')
+    expect(line).toContain('Not checked: leg 2: Map service down.')
+    expect(line).toContain(`not scanned for sudden drop, dust and temperature · ${KEPT_SLOPE}`)
+    // Neither scanned outright nor in the plain not-scanned list.
+    expect(line).not.toContain('radiation and mapped obstacle')
+    expect(line).not.toMatch(/not scanned for [^·]*mapped obstacle/)
+  })
+
   it('names what the map marks beside a searched route, as a walk leg does', async () => {
     const crater = { kind: 'small crater', at: at(0.5, 0.05), map: MAP }
     const searched = await planFastest(request, fixtureTerrain(() => 0, { mapPoints: [crater] }), signal)

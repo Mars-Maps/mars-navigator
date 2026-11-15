@@ -21,9 +21,14 @@ const ALL_HAZARD_KINDS = Object.keys(HAZARD_DETECTORS) as HazardKind[]
 function scannedKinds(route: RouteOption): readonly HazardKind[] {
   return route.hazardsScanned ?? SCANNED_HAZARD_KINDS
 }
+/** The kinds scanned over part of this route only, each with what was left out. */
+function partlyScanned(route: RouteOption): Partial<Record<HazardKind, string>> {
+  return route.hazardsPartlyScanned ?? {}
+}
 function unscannedKinds(route: RouteOption): readonly HazardKind[] {
   const scanned = scannedKinds(route)
-  return ALL_HAZARD_KINDS.filter((k) => !scanned.includes(k))
+  const partly = partlyScanned(route)
+  return ALL_HAZARD_KINDS.filter((k) => !scanned.includes(k) && partly[k] === undefined)
 }
 
 /**
@@ -168,21 +173,36 @@ function HazardsState({ route }: { route: RouteOption | null }) {
  * kinds still say "not scanned", and the badge gives the search's own words
  * (`keptOffBySearch`, the sentences its path method is built from). A route
  * that was not searched, or a map not read, keeps the kind in the plain list.
+ *
+ * A kind scanned over part of the route only is neither: it is named first,
+ * as checked in part, and its mark says which part was not and why, so
+ * "none found" never covers ground that was not looked at.
  */
 function Coverage({ route, leading }: { route: RouteOption; leading: boolean }) {
   const kept: Partial<Record<HazardKind, string>> = keptOffBySearch(route)
   const unscanned = unscannedKinds(route)
   const keptKinds = unscanned.filter((k) => kept[k] !== undefined)
   const rest = unscanned.filter((k) => kept[k] === undefined)
-  const parts: { text: string; detail?: string }[] = []
+  const partly = partlyScanned(route)
+  const partlyKinds = ALL_HAZARD_KINDS.filter((k) => partly[k] !== undefined)
+  // `tail` is the words the mark keeps to, so it never wraps onto a line alone.
+  const parts: { text: string; tail?: string; detail?: string }[] = []
+  if (partlyKinds.length > 0) {
+    parts.push({
+      text: `${listKinds(partlyKinds)} checked on part of the route`,
+      tail: 'only',
+      detail: partlyKinds.map((k) => `${partly[k]}.`).join(' '),
+    })
+  }
   if (rest.length > 0) parts.push({ text: `not scanned for ${listKinds(rest)}` })
   if (keptKinds.length > 0) {
     parts.push({
       text: `${listKinds(keptKinds)} kept off by the route search,`,
+      tail: 'not scanned',
       detail: keptKinds.map((k) => `${kept[k]}.`).join(' '),
     })
   }
-  return parts.map(({ text, detail }, i) => (
+  return parts.map(({ text, tail, detail }, i) => (
     <Fragment key={text}>
       {i > 0 || leading ? ' · ' : null}
       {/* Under a list the line starts a sentence; on the state line it follows one. */}
@@ -192,7 +212,7 @@ function Coverage({ route, leading }: { route: RouteOption; leading: boolean }) 
         <>
           {' '}
           <span className="whitespace-nowrap">
-            not scanned <ClassificationBadge classification="DERIVED" detail={detail} />
+            {tail} <ClassificationBadge classification="DERIVED" detail={detail} />
           </span>
         </>
       )}

@@ -70,4 +70,10 @@ export interface RouteOption {
    * kinds are those of the detector table.
    */
   hazardsScanned?: readonly HazardKind[]
+  /**
+   * Kinds scanned on part of this route only, each with what was left out
+   * and why. Such a kind is not in `hazardsScanned`: hazards of it may be
+   * listed, but none found is not "none on the route".
+   */
+  hazardsPartlyScanned?: Partial<Record<HazardKind, string>>
 }
