@@ -13,9 +13,10 @@ account, no API key.
 
 ## What it does
 
-- **A 3D globe of Mars.** Four base layers from NASA Mars Trek: satellite,
-  elevation, thermal and geology. Search for a named place, measure a
-  distance, or cut a terrain profile between two points.
+- **A 3D globe of Mars.** The globe provides four NASA Mars Trek base layers
+  covering satellite imagery, elevation, thermal data and geology.
+  Search for a named place, measure a distance, or cut a terrain
+  profile between two points.
 - **Routes over real terrain.** Pick two points and the route search finds a
   way between them over the elevation model, with its distance, slopes,
   hazards and the metabolic cost of walking it.
