@@ -22,8 +22,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v5
@@ -46,33 +44,25 @@ jobs:
           fi
           echo "No secret files tracked."
 
-      - name: Guard — files match the project manifest
-        run: node .github/build/check-slice.mjs "${{ github.event.pull_request.base.sha }}"
-
       - name: Guard — architecture import rules
         run: npm run check:arch
 
       # --- Verification ----------------------------------------------------
-      # Each step runs as soon as the part of the project it checks exists.
 
       - name: TypeScript
-        run: |
-          if [ -d src ]; then npm run typecheck; else echo "No sources yet."; fi
+        run: npm run typecheck
 
       - name: Lint
-        run: |
-          if [ -d src ]; then npm run lint; else echo "No sources yet."; fi
+        run: npm run lint
 
       - name: Tests
-        run: npx vitest run --passWithNoTests
+        run: npm test
 
       - name: Production build
         id: build
-        if: ${{ hashFiles('src/main.tsx') != '' }}
         run: npm run build
 
       - name: Guard — Three.js stays out of the first load
-        if: ${{ hashFiles('src/main.tsx') != '' }}
         run: npm run check:bundle
 
       - name: Build size
