@@ -7,7 +7,7 @@ import { HazardsPanel } from '../../src/features/mission-ui/navigation/HazardsPa
 import { ProgressTracker } from '../../src/features/mission-ui/navigation/ProgressTracker'
 import { planFastest } from '../../src/features/route-analysis/strategies/fastest'
 import { pendingOption } from '../../src/features/route-analysis/strategies/searchedRoute'
-import { at, fixtureTerrain } from './terrain.helpers'
+import { MAP, at, fixtureTerrain } from './terrain.helpers'
 
 // Test fixtures only: invented coordinates and hazards.
 const A: MarsCoordinate = { latitude: 0, longitudeEast: 0 }
@@ -79,20 +79,58 @@ describe('HazardsPanel: what the route search kept off the path', () => {
     ...option,
     hazards,
   })
-  const KEPT_BOTH = 'steep slope and mapped obstacle kept off by the route search, not scanned'
+  const KEPT_SLOPE = 'steep slope kept off by the route search, not scanned'
   // The words only: "not scanned" and its mark sit in a no-wrap span.
   const words = (html: string) => html.replace(/<[^>]+>/g, '')
 
-  it('moves slope and mapped obstacle out of the plain list on a searched route, still "not scanned"', async () => {
+  it('scans a searched route for mapped obstacles where the map was read, and moves slope out of the plain list', async () => {
+    // The fixture's ground stands above the radiation line, so the scan's result is replaced; the coverage is the route's.
     const searched = scanned(await planFastest(request, fixtureTerrain(() => 0), signal))
     const line = words(heading(renderToStaticMarkup(<HazardsPanel route={searched} />)))
-    expect(line).toContain('Scanned for radiation: none found')
-    expect(line).toContain(`not scanned for sudden drop, dust and temperature · ${KEPT_BOTH}`)
+    // The route's own coverage: the map was read, so what it marks along the path was scanned.
+    expect(line).toContain('Scanned for radiation and mapped obstacle: none found')
+    expect(line).toContain(`not scanned for sudden drop, dust and temperature · ${KEPT_SLOPE}`)
     expect(line).not.toContain('not scanned for steep slope')
+    expect(line).not.toContain('mapped obstacle kept off')
     // The badge gives the search's own words, the ones its path method is built from.
     expect(line).toContain('DERIVED')
     expect(line).toContain('Steps over 20° (')
-    expect(line).toContain('small craters and ridged ground are not avoided.')
+  })
+
+  it('says a kind scanned over part of the route was checked in part, never "none found" for it', async () => {
+    const two = { departure: at(0, 0), stops: [at(1, 0)], destination: at(2, 0) }
+    const second = (b: { east: number }) => b.east > at(2.5, 0).longitudeEast
+    const searched = scanned(await planFastest(two, fixtureTerrain(() => 0, { mapFailsFor: second }), signal))
+    const line = words(heading(renderToStaticMarkup(<HazardsPanel route={searched} />)))
+    expect(line).toContain('Scanned for radiation: none found')
+    expect(line).toContain('mapped obstacle checked on part of the route only')
+    expect(line).toContain('Not checked: leg 2: Map service down.')
+    expect(line).toContain(`not scanned for sudden drop, dust and temperature · ${KEPT_SLOPE}`)
+    // Neither scanned outright nor in the plain not-scanned list.
+    expect(line).not.toContain('radiation and mapped obstacle')
+    expect(line).not.toMatch(/not scanned for [^·]*mapped obstacle/)
+  })
+
+  it('follows a list from a partly scanned route with the same words', async () => {
+    const two = { departure: at(0, 0), stops: [at(1, 0)], destination: at(2, 0) }
+    const second = (b: { east: number }) => b.east > at(2.5, 0).longitudeEast
+    const crater = { kind: 'small crater', at: at(0.4, 0.05), map: MAP }
+    const searched = await planFastest(two, fixtureTerrain(() => 0, { mapPoints: [crater], mapFailsFor: second }), signal)
+    const html = renderToStaticMarkup(<HazardsPanel route={searched} />)
+    expect(words(html)).toContain('On the map: small crater')
+    const after = words(html.slice(html.lastIndexOf('</ul>')))
+    expect(after).toContain('Mapped obstacle checked on part of the route only')
+    expect(after).toContain('Not checked: leg 2: Map service down.')
+  })
+
+  it('names what the map marks beside a searched route, as a walk leg does', async () => {
+    const crater = { kind: 'small crater', at: at(0.5, 0.05), map: MAP }
+    const searched = await planFastest(request, fixtureTerrain(() => 0, { mapPoints: [crater] }), signal)
+    const html = renderToStaticMarkup(<HazardsPanel route={searched} />)
+    expect(html).toContain('<ul')
+    expect(words(html)).toContain('Mapped obstacle')
+    expect(words(html)).toContain('On the map: small crater')
+    expect(words(html)).not.toContain('none found')
   })
 
   it('keeps mapped obstacle in the plain list where the map was not read', async () => {
@@ -117,7 +155,7 @@ describe('HazardsPanel: what the route search kept off the path', () => {
     const hazard = { id: 'h1', kind: 'slope' as const, coordinate: A, magnitude: derived(12, 'fixture slope'), unit: 'deg' }
     const html = renderToStaticMarkup(<HazardsPanel route={scanned(option, derived([hazard], 'fixture scan'))} />)
     const after = words(html.slice(html.indexOf('</ul>')))
-    expect(after).toContain(`Not scanned for sudden drop, dust and temperature · ${KEPT_BOTH}`)
+    expect(after).toContain(`Not scanned for sudden drop, dust and temperature · ${KEPT_SLOPE}`)
   })
 })
 

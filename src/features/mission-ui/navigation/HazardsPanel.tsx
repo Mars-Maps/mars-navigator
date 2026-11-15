@@ -5,10 +5,31 @@ import { Panel } from '../../../components/Panel'
 import { PanelHeader } from '../../../components/PanelHeader'
 import { useMinimized } from '../../../components/useMinimized'
 import { ClassifiedValue } from '../ClassifiedValue'
-import { SCANNED_HAZARD_KINDS, UNSCANNED_HAZARD_KINDS } from '../../route-analysis/hazards'
+import { HAZARD_DETECTORS, SCANNED_HAZARD_KINDS } from '../../route-analysis/hazards'
 import { keptOffBySearch } from '../../route-analysis/strategies/searchedRoute'
 import { RadiationHazardNote } from '../radiation/RadiationWarning'
+import { HazardRow } from '../walk/LegDetail'
 import { HAZARD_LABEL, listKinds } from './labels'
+
+const ALL_HAZARD_KINDS = Object.keys(HAZARD_DETECTORS) as HazardKind[]
+
+/**
+ * The kinds scanned on this route, and the rest. A route that carries its
+ * own coverage says it (a searched route's mapped obstacles are scanned only
+ * where the geologic map was read); any other is the detector table's.
+ */
+function scannedKinds(route: RouteOption): readonly HazardKind[] {
+  return route.hazardsScanned ?? SCANNED_HAZARD_KINDS
+}
+/** The kinds scanned over part of this route only, each with what was left out. */
+function partlyScanned(route: RouteOption): Partial<Record<HazardKind, string>> {
+  return route.hazardsPartlyScanned ?? {}
+}
+function unscannedKinds(route: RouteOption): readonly HazardKind[] {
+  const scanned = scannedKinds(route)
+  const partly = partlyScanned(route)
+  return ALL_HAZARD_KINDS.filter((k) => !scanned.includes(k) && partly[k] === undefined)
+}
 
 /**
  * One decimal place until the dataset says what precision its magnitudes
@@ -83,6 +104,11 @@ export function HazardsPanel({ route }: { route: RouteOption | null }) {
                     atmosphere overhead rather than a bare magnitude. */}
                 {hazard.kind === 'radiation' ? (
                   <RadiationHazardNote hazard={hazard} />
+                ) : hazard.kind === 'mapped-obstacle' ? (
+                  // The map gives no size, so the row names what it marks, as a walk leg's flag does.
+                  <div className="text-caption">
+                    <HazardRow hazard={hazard} />
+                  </div>
                 ) : (
                   <>
                     <p className="text-caption tabular-nums text-ink-subtle">
@@ -125,15 +151,14 @@ function HazardsState({ route }: { route: RouteOption | null }) {
       </p>
     )
   }
-  // The kinds come from the detector table, not from this result: a DERIVED
-  // list means at least one ready detector ran, and while radiation is the
-  // only one that is exactly "scanned for radiation". When a second detector
-  // is built the result must carry its own coverage (hazards.test pins the list).
+  // The kinds are the route's own coverage when it carries one (a searched
+  // route), else the detector table's: a DERIVED list means at least one
+  // ready detector ran.
   // The sentence always takes its own line under the heading, at any panel
   // width, so the heading's line never ends in a separator.
   return (
     <p className="basis-full text-body text-ink-muted">
-      Scanned for {listKinds(SCANNED_HAZARD_KINDS)}: none found
+      Scanned for {listKinds(scannedKinds(route))}: none found
       <span className="text-caption text-ink-subtle">
         <Coverage route={route} leading />
       </span>
@@ -148,20 +173,36 @@ function HazardsState({ route }: { route: RouteOption | null }) {
  * kinds still say "not scanned", and the badge gives the search's own words
  * (`keptOffBySearch`, the sentences its path method is built from). A route
  * that was not searched, or a map not read, keeps the kind in the plain list.
+ *
+ * A kind scanned over part of the route only is neither: it is named first,
+ * as checked in part, and its mark says which part was not and why, so
+ * "none found" never covers ground that was not looked at.
  */
 function Coverage({ route, leading }: { route: RouteOption; leading: boolean }) {
   const kept: Partial<Record<HazardKind, string>> = keptOffBySearch(route)
-  const keptKinds = UNSCANNED_HAZARD_KINDS.filter((k) => kept[k] !== undefined)
-  const rest = UNSCANNED_HAZARD_KINDS.filter((k) => kept[k] === undefined)
-  const parts: { text: string; detail?: string }[] = []
+  const unscanned = unscannedKinds(route)
+  const keptKinds = unscanned.filter((k) => kept[k] !== undefined)
+  const rest = unscanned.filter((k) => kept[k] === undefined)
+  const partly = partlyScanned(route)
+  const partlyKinds = ALL_HAZARD_KINDS.filter((k) => partly[k] !== undefined)
+  // `tail` is the words the mark keeps to, so it never wraps onto a line alone.
+  const parts: { text: string; tail?: string; detail?: string }[] = []
+  if (partlyKinds.length > 0) {
+    parts.push({
+      text: `${listKinds(partlyKinds)} checked on part of the route`,
+      tail: 'only',
+      detail: partlyKinds.map((k) => `${partly[k]}.`).join(' '),
+    })
+  }
   if (rest.length > 0) parts.push({ text: `not scanned for ${listKinds(rest)}` })
   if (keptKinds.length > 0) {
     parts.push({
       text: `${listKinds(keptKinds)} kept off by the route search,`,
+      tail: 'not scanned',
       detail: keptKinds.map((k) => `${kept[k]}.`).join(' '),
     })
   }
-  return parts.map(({ text, detail }, i) => (
+  return parts.map(({ text, tail, detail }, i) => (
     <Fragment key={text}>
       {i > 0 || leading ? ' · ' : null}
       {/* Under a list the line starts a sentence; on the state line it follows one. */}
@@ -171,7 +212,7 @@ function Coverage({ route, leading }: { route: RouteOption; leading: boolean }) 
         <>
           {' '}
           <span className="whitespace-nowrap">
-            not scanned <ClassificationBadge classification="DERIVED" detail={detail} />
+            {tail} <ClassificationBadge classification="DERIVED" detail={detail} />
           </span>
         </>
       )}

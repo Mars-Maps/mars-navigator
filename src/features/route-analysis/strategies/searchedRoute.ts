@@ -2,14 +2,16 @@ import {
   SUITED_SLOPE_LIMIT,
   derived,
   official,
+  unavailable,
   type MarsCoordinate,
   type RouteOption,
   type RouteRequest,
   type RouteStrategy,
   type SurfacePoint,
 } from '../../../domain'
-import { detectHazards } from '../hazards'
+import { HAZARD_DETECTORS, scanHazards, type HazardDetector } from '../hazards'
 import { OBSTACLE_KINDS } from '../mappedObstacles'
+import type { MappedObstacleScan } from '../routeObstacles'
 import { METABOLIC_COST_METHOD, walkingKcalPerKm } from '../metabolicCost'
 import { searchLeg, type SearchedLeg, type StepCost } from '../terrainSearch'
 import { WALKING_SPEED_METHOD, suitedWalkingKmh } from '../walkingSpeed'
@@ -127,7 +129,22 @@ export async function planSearchedRoute(
     }
     legs.push(leg.value)
   }
-  return searchedOption(strategy, request, legs, walked, search)
+  // The scan of what the map marks along the path is read here, on the first
+  // searched route, not with the app: it is the one part of a route's
+  // hazards that is not needed until a route exists. If its file cannot be
+  // read (offline, or a deploy since the page loaded) the route is still
+  // drawn, with mapped obstacles not scanned, as before the scan existed.
+  const mappedObstacleScan = await import('../routeObstacles').then(
+    (m) => m.mappedObstacleScan,
+    () => null,
+  )
+  return searchedOption(strategy, request, legs, walked, search, mappedObstacleScan)
+}
+
+/** In place of the mapped-obstacle scan when its module could not be read: not scanned, with that reason. */
+const SCAN_NOT_LOADED: HazardDetector = {
+  ...HAZARD_DETECTORS['mapped-obstacle'],
+  detect: () => unavailable('The scan of what the geologic map marks could not be loaded; plan the route again to retry'),
 }
 
 /** The option from the legs found; `numbers` are the legs' places in the user's list, a skipped leg counted. */
@@ -137,6 +154,7 @@ function searchedOption(
   legs: SearchedLeg[],
   numbers: number[],
   search: SearchCost,
+  mappedObstacleScan: MappedObstacleScan | null,
 ): RouteOption {
   const methods = [...new Set(legs.map((leg) => leg.method))]
   const searchMethod = methods.length === 1 ? methods[0] : `Per leg: ${methods.join(' / ')}`
@@ -160,6 +178,10 @@ function searchedOption(
   const hours = steps.reduce((sum, step) => sum + step.km / suitedWalkingKmh(step.s), 0)
   const kcal = steps.reduce((sum, step) => sum + step.km * walkingKcalPerKm(step.s), 0)
   const unchecked = legs.flatMap((leg, l) => (leg.obstacles.checked ? [] : [`leg ${numbers[l]}: ${leg.obstacles.reason}`]))
+  const mapped = mappedObstacleScan?.(strategy, legs, numbers) ?? null
+  const scan = scanHazards(path, { ...HAZARD_DETECTORS, 'mapped-obstacle': mapped ? mapped.detector : SCAN_NOT_LOADED })
+  const gaps = mapped?.gaps ?? []
+  const partly = gaps.length > 0 && scan.scanned.includes('mapped-obstacle')
   const obstacles =
     unchecked.length === 0
       ? LINES_KEPT_OFF
@@ -182,6 +204,10 @@ function searchedOption(
       metabolicEnergyKcal: derived(kcal, `Sum over the path's steps of length times the cost of walking its slope. ${METABOLIC_COST_METHOD}`),
     },
     // The path's nodes carry heights, so the shielding scan runs along it; `points` have none.
-    hazards: detectHazards(path),
+    // What the map marks is scanned along each leg's own path, with the features its search read.
+    hazards: scan.hazards,
+    // A kind scanned over part of the route is not "scanned": the panel says which part was not.
+    hazardsScanned: partly ? scan.scanned.filter((k) => k !== 'mapped-obstacle') : scan.scanned,
+    ...(partly ? { hazardsPartlyScanned: { 'mapped-obstacle': `Not checked: ${gaps.join('; ')}` } } : {}),
   }
 }
