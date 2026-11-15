@@ -152,7 +152,13 @@ export interface RoverCheckWalk {
   samples: SampleStop[]
   budget: WalkBudget
   /** Waypoints of the candidate left off to fit, and the limit the next one would break. */
-  cut: { count: number; limit: WalkLimit | null }
+  cut: {
+    count: number
+    /** The limit the next waypoint would break; null when none breaks or the next could not be checked. */
+    limit: WalkLimit | null
+    /** Why the next waypoint could not be checked (a figure unknown, e.g. a missing height); null when it could. */
+    unchecked: { limits: WalkLimit[]; reason: string } | null
+  }
 }
 
 /**
@@ -178,9 +184,15 @@ export function fitRoverCheck(
   let kept = 0
   let keptBudget: WalkBudget | null = null
   let stoppedBy: WalkLimit | null = null
+  let unchecked: { limits: WalkLimit[]; reason: string } | null = null
   for (let k = 1; k <= candidate.stops.length; k++) {
     const budget = walkBudget(upTo(profile, atKm[k - 1]), k)
     const fit = fitsSettings(budget, settings)
+    // A figure unknown on the way to waypoint k: the walk stops before it, keeping those that fit.
+    if (fit.fits === null && kept > 0) {
+      unchecked = { limits: fit.unknown, reason: unknownReason(budget) }
+      break
+    }
     if (fit.fits === null) {
       return unavailable(
         `The walk to waypoint ${k} cannot be checked against the settings (${fit.unknown.join(', ')} not known): ${unknownReason(budget)}`,
@@ -205,7 +217,7 @@ export function fitRoverCheck(
       path: path.slice(0, kept + 1),
       samples: stops.map((s, i) => ({ id: `sample-${i + 1}`, order: i + 1, coordinate: s.coordinate, dwellMin: SAMPLE_MINUTES })),
       budget: keptBudget,
-      cut: { count: candidate.stops.length - kept, limit: stoppedBy },
+      cut: { count: candidate.stops.length - kept, limit: stoppedBy, unchecked },
     },
     `${WAYPOINT_CHOICE}. A sample at each waypoint, not evenly spaced. Cut back to the most waypoints whose walk and samples fit the duration, energy and slope limit of the settings. Waypoints: ${candidate.source}`,
   )

@@ -13,9 +13,10 @@ import { SAMPLE_GREEN, samplePointNames, walkPlanGeometry } from './walkPlanGeom
 /**
  * Across, in CSS pixels: bigger than a stop's dot (5), smaller than a
  * hazard's red point (13) with its white ring, so a sample and a hazard
- * close together are told apart by size as well as colour.
+ * close together are told apart by size as well as colour. 11, not 9, for
+ * the heavy dark rim: the green inside stays as large as before.
  */
-const SAMPLE_PX = 9
+const SAMPLE_PX = 11
 /** A ring round the landing site, larger than anything on the walk. */
 const LANDING_PX = 15
 /** Over the walk's lines and stop dots (3), under the hazard points (3.5). */
@@ -31,10 +32,10 @@ function noRaycast() {}
 
 type Dots = Points<BufferGeometry, PointsMaterial>
 
-function dots(fill: string, px: number, order: number, hollow = false): Dots {
+function dots(fill: string, px: number, order: number, hollow = false, heavyRim = false): Dots {
   const p = new Points(
     new BufferGeometry(),
-    new PointsMaterial({ map: createDotTexture(fill, hollow), size: px, sizeAttenuation: false, transparent: true, depthWrite: false }),
+    new PointsMaterial({ map: createDotTexture(fill, hollow, heavyRim), size: px, sizeAttenuation: false, transparent: true, depthWrite: false }),
   )
   p.raycast = noRaycast
   p.renderOrder = order
@@ -75,7 +76,7 @@ export function WalkSamplePoints() {
   useEffect(() => {
     const group = groupRef.current
     if (!group) return
-    const samples = dots(hexCss(SAMPLE_GREEN), SAMPLE_PX, SAMPLE_RENDER_ORDER)
+    const samples = dots(hexCss(SAMPLE_GREEN), SAMPLE_PX, SAMPLE_RENDER_ORDER, false, true)
     const site = dots('#ffffff', LANDING_PX, LANDING_RENDER_ORDER, true)
     group.add(samples, site)
     rig.current = { samples, landing: site, names: [], local: new Float32Array(0) }

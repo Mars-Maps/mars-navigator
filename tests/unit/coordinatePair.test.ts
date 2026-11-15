@@ -7,6 +7,7 @@ import {
   Y_FORMAT_ERROR,
   Y_RANGE_ERROR,
   axisText,
+  checkOnFieldLeave,
   checkPair,
   pairText,
   wholePoint,
@@ -67,6 +68,37 @@ describe('checkPair: X is longitude °E, Y is latitude', () => {
   it('is empty and quiet when both are blank, unless the point is required', () => {
     expect(checkPair('', '  ')).toEqual({ coordinate: null, error: null, invalidX: false, invalidY: false })
     expect(checkPair('', '', true)).toEqual({ coordinate: null, error: REQUIRED_ERROR, invalidX: true, invalidY: true })
+  })
+})
+
+describe('checkOnFieldLeave: a field left while focus stays in the row', () => {
+  it('flags a complete pair that is out of range, as the commit would', () => {
+    // Latitude 95, then Tab onto the button beside the fields.
+    expect(checkOnFieldLeave('77.40', '95')).toEqual(checkPair('77.40', '95'))
+    expect(checkOnFieldLeave('77.40', '95')?.error).toBe(Y_RANGE_ERROR)
+    expect(checkOnFieldLeave('400', '18.47')).toMatchObject({ error: X_RANGE_ERROR, invalidX: true, invalidY: false })
+    expect(checkOnFieldLeave('abc', '18.47')?.error).toBe(X_FORMAT_ERROR)
+  })
+
+  it('clears a shown error once the pair is valid', () => {
+    expect(checkOnFieldLeave('77.40', '18.47')).toEqual({
+      coordinate: { latitude: 18.47, longitudeEast: 77.4 },
+      error: null,
+      invalidX: false,
+      invalidY: false,
+    })
+  })
+
+  it('says nothing while the pair is half filled, even with a bad value in it', () => {
+    // Tab from X to an empty Y: the point is still being typed.
+    expect(checkOnFieldLeave('400', '')).toBeNull()
+    expect(checkOnFieldLeave('', '95')).toBeNull()
+    expect(checkOnFieldLeave(' ', '  ')).toBeNull()
+  })
+
+  it('leaves a whole point in one field for the commit to fill into both', () => {
+    expect(checkOnFieldLeave('-4.6, 137.4', '18')).toBeNull()
+    expect(checkOnFieldLeave('77', '4.6°S 137.4°E')).toBeNull()
   })
 })
 

@@ -103,10 +103,13 @@ export function walkDrafts(planner: WalkPlanner, sources: WalkDraftSources): Rec
         }
       })
       const { cut } = walk.value
+      const left = `${cut.count} more waypoint${cut.count === 1 ? ' was' : 's were'} left off`
       const notes =
-        cut.count > 0
-          ? [`${cut.count} more waypoint${cut.count === 1 ? ' was' : 's were'} left off: the next would break the ${cut.limit ?? 'settings'} limit.`]
-          : []
+        cut.count === 0
+          ? []
+          : cut.unchecked
+            ? [`${left}: the walk to the next could not be checked (${cut.unchecked.limits.join(', ')} not known): ${cut.unchecked.reason}.`]
+            : [`${left}: the next would break the ${cut.limit ?? 'settings'} limit.`]
       return derived({ goal: ROVER_CHECK_GOAL, stops, samples: walk.value.samples, notes }, methodOf(walk))
     },
   }

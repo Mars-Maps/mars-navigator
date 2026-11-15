@@ -1,4 +1,4 @@
-import { derived, unavailable, type Classified, type MarsCoordinate } from '../domain'
+import { MARS_MEAN_RADIUS_KM, derived, unavailable, type Classified, type MarsCoordinate } from '../domain'
 import type { LandingReading } from '../features/mission-ui/walk/LandingStep'
 import { LANDING_RATING, landingReasonText } from '../features/route-analysis/landingFavourability'
 import { latticeCellAt } from '../features/route-analysis/landingLattice'
@@ -33,7 +33,9 @@ export function landingRatingAt(state: LandingRatingState, point: MarsCoordinate
   if (k === null) return unavailable('The landing rating covers the site’s box only')
   const code = grid.rating[k]
   if (code === LANDING_RATING.green || code === LANDING_RATING.yellow || code === LANDING_RATING.red) {
-    return derived({ colour: COLOUR[code], slopeDeg: slopeDeg[k] }, method)
+    // North to south, a cell is the box's height over its rows: the lattice's own spacing.
+    const cellKm = (((grid.bounds.north - grid.bounds.south) / grid.rows) * Math.PI * MARS_MEAN_RADIUS_KM) / 180
+    return derived({ colour: COLOUR[code], slopeDeg: slopeDeg[k], cellKm }, method)
   }
   return unavailable(landingReasonText(reason[k]) ?? 'No rating for this ground')
 }

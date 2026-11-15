@@ -48,6 +48,22 @@ export function checkPair(xText: string, yText: string, required = false): PairC
 }
 
 /**
+ * What to show when focus leaves one field but stays in the point's group:
+ * the other field, or a button beside them. The point does not
+ * commit there (rowFocus), so without this an out-of-range value stayed
+ * unflagged, and the route "ready", until focus left the whole row.
+ *
+ * Only a complete pair is judged: a half-filled one is still being typed,
+ * and a whole point in one field is filled into both on commit. Returns
+ * null for those, meaning leave what is shown as it is.
+ */
+export function checkOnFieldLeave(xText: string, yText: string): PairCheck | null {
+  if (xText.trim() === '' || yText.trim() === '') return null
+  if (wholePoint(xText) || wholePoint(yText)) return null
+  return checkPair(xText, yText)
+}
+
+/**
  * A whole point in one field's text: "lat, lon", or the copied form
  * "4.6°S 137.4°E". Pasted or typed into either field, it fills both.
  */

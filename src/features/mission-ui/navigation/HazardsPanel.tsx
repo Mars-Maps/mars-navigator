@@ -34,6 +34,8 @@ export function HazardsPanel({ route }: { route: RouteOption | null }) {
     hazards && hazards.classification !== 'UNAVAILABLE' && hazards.value.length > 0
       ? hazards.value
       : null
+  // Scanned and none found: the one state whose line is a full sentence.
+  const scanned = !list && hazards !== undefined && hazards.classification !== 'UNAVAILABLE'
   const { minimized, toggle, bodyId } = useMinimized()
   return (
     <Panel surface="glass" compact>
@@ -56,12 +58,16 @@ export function HazardsPanel({ route }: { route: RouteOption | null }) {
             <ClassificationBadge classification="UNAVAILABLE" detail={hazards.reason} />
           )}
           {/* With no list the one-line state is the body, so it carries the
-              id here, on the bar's line, and folds with the rest. */}
+              id here, on the bar's line, and folds with the rest. The
+              separator is only for a state that shares the heading's line:
+              the scanned state is a sentence on its own line. */}
           {!list && !minimized && (
             <div id={bodyId} className="contents">
-              <span aria-hidden="true" className="text-ink-subtle">
-                ·
-              </span>
+              {!scanned && (
+                <span aria-hidden="true" className="text-ink-subtle">
+                  ·
+                </span>
+              )}
               <HazardsState route={route} />
             </div>
           )}
@@ -123,8 +129,10 @@ function HazardsState({ route }: { route: RouteOption | null }) {
   // list means at least one ready detector ran, and while radiation is the
   // only one that is exactly "scanned for radiation". When a second detector
   // is built the result must carry its own coverage (hazards.test pins the list).
+  // The sentence always takes its own line under the heading, at any panel
+  // width, so the heading's line never ends in a separator.
   return (
-    <p className="text-body text-ink-muted">
+    <p className="basis-full text-body text-ink-muted">
       Scanned for {listKinds(SCANNED_HAZARD_KINDS)}: none found
       <span className="text-caption text-ink-subtle">
         <Coverage route={route} leading />

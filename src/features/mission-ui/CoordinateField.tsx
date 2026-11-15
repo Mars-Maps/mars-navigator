@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { MarsCoordinate } from '../../domain'
-import { checkPair, pairText, wholePoint, type PairCheck } from './coordinatePair'
+import { checkOnFieldLeave, checkPair, pairText, wholePoint, type PairCheck } from './coordinatePair'
 import { leaveOf, rowAction } from './rowFocus'
 
 type PairText = { x: string; y: string }
@@ -17,7 +17,8 @@ type PairText = { x: string; y: string }
 /**
  * One point as two inputs: X, the longitude in degrees east, then Y,
  * the latitude. Keeps its own text so invalid input stays visible; commits
- * on Enter or when focus leaves the whole group (rowAction). A whole point
+ * on Enter or when focus leaves the whole group (rowAction); a complete pair
+ * that is wrong is flagged already when its field is left. A whole point
  * pasted or typed into either field fills both. Follows the store when the
  * value changes from outside (a reorder, a cleared route).
  */
@@ -106,7 +107,17 @@ export function CoordinateField({
   const onBlur = (e: FocusEvent<HTMLDivElement>) => {
     const element = (t: EventTarget | null) => (t instanceof HTMLElement ? t : null)
     const leave = leaveOf(element(e.target), element(e.relatedTarget), group.current, holdFocusKey)
-    if (rowAction(leave) === 'commit') commit('blur')
+    if (rowAction(leave) === 'commit') {
+      commit('blur')
+      return
+    }
+    // Still inside the group, so nothing commits, but a complete pair that
+    // is wrong is flagged as soon as its field is left. Nothing is
+    // written to the store; the commit on leaving the row does that.
+    if (e.target instanceof HTMLInputElement) {
+      const early = checkOnFieldLeave(text.x, text.y)
+      if (early) setShown(early)
+    }
   }
 
   const onPaste = (e: ClipboardEvent<HTMLInputElement>) => {

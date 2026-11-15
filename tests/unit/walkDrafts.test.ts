@@ -165,6 +165,22 @@ describe('walkDrafts: the rover check', () => {
     expect(check.plan.stops[1].reason).toMatchObject({ classification: 'OFFICIAL', value: 'Perseverance was here on sol 100 (site 7, drive 0)' })
   })
 
+  it('keeps the waypoints before a missing height, and says why the rest were left off', async () => {
+    // No height past 1.5 km east: the walk to the second waypoint (2 km) cannot be checked.
+    const gappy: ProfileHeights = {
+      ...heights,
+      elevationsAt: async (points) => {
+        const h = flat(points)
+        for (let i = 0; i < h.length; i++) if (xOf({ latitude: points[i * 2], longitudeEast: points[i * 2 + 1] }) > 1.5) h[i] = Number.NaN
+        return official({ heights: h, sourceIndex: new Uint8Array(h.length), sources: [MODEL] }, 'fixture chain')
+      },
+    }
+    const check = (await plan(setup({ profile: (path, s) => sampleProfile(path, gappy, s) }))).find((o) => o.kind === 'rover-check')
+    if (check?.status !== 'planned') throw new Error(`expected a rover check: ${JSON.stringify(check)}`)
+    expect(check.plan.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · sol 100'])
+    expect(check.samplesNote).toMatch(/^2 more waypoints were left off: the walk to the next could not be checked \(.*not known\): /)
+  })
+
   it('is UNAVAILABLE with the reason when the rover path cannot be read, or throws', async () => {
     const down = await plan(setup({ traverse: async () => unavailable('fixture: feed down') }))
     expect(down.find((o) => o.kind === 'rover-check')).toMatchObject({

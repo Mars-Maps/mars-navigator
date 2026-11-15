@@ -106,7 +106,7 @@ describe('planProfile sampling', () => {
     const plan = planProfile(path([0, 0], [0, 1.8]), { minSpacingKm: 0.2 })
     expect(plan.classification).toBe('DERIVED')
     if (plan.classification === 'DERIVED') {
-      expect(plan.method).toMatch(/^200 samples about every 535 m along the great-circle legs/)
+      expect(plan.method).toMatch(/^200 samples about every 535 m along the line's great-circle stretches, every corner of the line included/)
     }
     const long = planProfile(path([0, 0], [0, 90]), { minSpacingKm: 0.2 })
     if (long.classification === 'DERIVED') expect(long.method).toMatch(/every 27 km/)
@@ -165,7 +165,7 @@ describe('profileFromHeights', () => {
     ])
     expect(profile.value.samples.map((s) => s.distanceKm)).toEqual([0, profile.value.totalDistanceKm / 2, profile.value.totalDistanceKm])
     expect(profile.value.totalDistanceKm).toBeCloseTo(DEG_KM, 6)
-    expect(profile.method).toMatch(/^3 samples about every .* along the great-circle legs .*; each height is the fixture cell source$/)
+    expect(profile.method).toMatch(/^3 samples about every .* along the line's great-circle stretches.*; each height is the fixture cell source$/)
   })
 
   it('passes an UNAVAILABLE plan or read through with its reason', () => {

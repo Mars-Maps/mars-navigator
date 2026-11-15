@@ -115,7 +115,7 @@ describe('fitRoverCheck', () => {
     const c = candidate()
     const w = fit(c, profileFor(c), settings())
     expect(w.stops).toHaveLength(4)
-    expect(w.cut).toEqual({ count: 0, limit: null })
+    expect(w.cut).toEqual({ count: 0, limit: null, unchecked: null })
     expect(w.path).toEqual([START, ...W.map((p) => p.coordinate)])
     expect(w.samples.map((s) => s.coordinate)).toEqual(W.map((p) => p.coordinate))
     expect(w.samples.map((s) => s.order)).toEqual([1, 2, 3, 4])
@@ -130,7 +130,7 @@ describe('fitRoverCheck', () => {
     const w = fit(c, profileFor(c), settings({ durationMin: 40 }))
     expect(w.stops.map((s) => s.waypoint)).toEqual([W[0], W[1]])
     expect(w.samples).toHaveLength(2)
-    expect(w.cut).toEqual({ count: 2, limit: 'duration' })
+    expect(w.cut).toEqual({ count: 2, limit: 'duration', unchecked: null })
   })
 
   it('cuts the walk back to fit the energy', () => {
@@ -156,7 +156,19 @@ describe('fitRoverCheck', () => {
     if (r.classification === 'UNAVAILABLE') expect(r.reason).toMatch(/breaks the duration limit/)
   })
 
-  it('is UNAVAILABLE, not a walk, where a height on the way is missing', () => {
+  it('keeps the waypoints that fit and stops before one whose way has a missing height', () => {
+    // No height between 0.8 and 0.9 km: on the way to waypoint 3 (1.0 km), after waypoints 1 and 2 fit.
+    const c = candidate()
+    const w = fit(c, profileFor(c, (km) => (km > 0.8 && km < 0.9 ? Number.NaN : -2500)), settings())
+    expect(w.stops.map((s) => s.waypoint)).toEqual([W[0], W[1]])
+    expect(w.samples).toHaveLength(2)
+    expect(w.cut.count).toBe(2)
+    expect(w.cut.limit).toBeNull()
+    expect(w.cut.unchecked?.limits).toEqual(expect.arrayContaining(['duration', 'energy', 'slope']))
+    expect(w.cut.unchecked?.reason).toMatch(/no height/)
+  })
+
+  it('is UNAVAILABLE, not a walk, where a height on the way to the first waypoint is missing', () => {
     const c = candidate()
     const r = fitRoverCheck(c, profileFor(c, (km) => (km > 0.1 && km < 0.2 ? Number.NaN : -2500)), settings())
     expect(r.classification).toBe('UNAVAILABLE')
