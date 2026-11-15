@@ -46,6 +46,7 @@ export function GoalPickerView({
   landingProblem,
   landingRating,
   landingColours,
+  site,
   picking,
   onPickLanding,
   settings,
@@ -69,6 +70,13 @@ export function GoalPickerView({
   landingRating?: Classified<LandingReading>
   /** The landing colours drawn on the map while the first step is open, for their legend. */
   landingColours?: LandingColoursStatus
+  /**
+   * The one place the tool works, and the way there: the panel says a walk
+   * is planned in and around it only, and its button flies the view to it,
+   * where the landing colours are drawn. Absent where the view cannot be
+   * moved from here (navigation), and nothing is said.
+   */
+  site?: { name: string; onGoTo: () => void }
   /** The next click on the map sets the landing site. */
   picking: boolean
   /** Turns the pick on; absent where the globe cannot be clicked. */
@@ -122,6 +130,8 @@ export function GoalPickerView({
       <PanelHeader title="Plan a walk" minimized={minimized} onToggleMinimized={onToggle} bodyId={bodyId} spacing="mb-3">
         <h2 className="text-heading font-semibold text-ink">Plan a walk</h2>
       </PanelHeader>
+      {/* Above the fold: the panel folds while the pick waits for its first click, which is when the tool has just been opened. */}
+      {site && step === 'landing' && <SiteOnly name={site.name} onGoTo={site.onGoTo} />}
       {/* The colours stay on the map while the panel is minimised, so what they are stays on show too. */}
       {legendMethod !== null && <LandingLegendLine method={legendMethod} />}
       {minimized ? null : (
@@ -193,6 +203,29 @@ export function GoalPickerView({
         </div>
       )}
     </Panel>
+  )
+}
+
+/**
+ * Where the tool works and the way there. The landing colours are drawn
+ * over the site only, so from anywhere else the map shows none: the button
+ * centres the view on the site, where they are.
+ */
+function SiteOnly({ name, onGoTo }: { name: string; onGoTo: () => void }) {
+  return (
+    <div className="mb-2 flex flex-col items-start gap-1.5">
+      <p className="text-caption text-ink-muted">
+        This tool works in and around <span className="text-ink">{name}</span> only: a walk is planned there, and the landing
+        colours are drawn there and nowhere else on the map.
+      </p>
+      <button
+        type="button"
+        onClick={onGoTo}
+        className="rounded-control border border-accent/50 bg-accent/15 px-3 py-1 text-body text-accent transition-colors duration-(--duration-fast) hover:border-accent/80 hover:bg-accent/25"
+      >
+        Go to {name}
+      </button>
+    </div>
   )
 }
 

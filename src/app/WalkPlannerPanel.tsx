@@ -4,7 +4,7 @@ import { GoalPickerView, type PlanStatus } from '../features/mission-ui/walk/Goa
 import { DEFAULT_MISSION_SETTINGS } from '../features/mission-ui/walk/missionSettings'
 import { planIndexOfKind, walksOfPlans } from '../features/mission-ui/walk/walkCardFigures'
 import { firstStep, shownStep } from '../features/mission-ui/walk/walkSteps'
-import { canTransition, useLandingSite, useMissionStore, useRoutePick, useWalkPlan } from '../state'
+import { canTransition, useLandingSite, useMissionStore, useRoutePick, useSite, useWalkPlan } from '../state'
 import { geologicFeatures, geologicUnitAreas, geologicUnitAt } from '../data/adapters/GeologyAdapter'
 import { loadPlaceNames } from '../data/adapters/PlaceNamesAdapter'
 import { DEFAULT_SITE } from '../data/sites/sites'
@@ -158,6 +158,8 @@ export function WalkPlannerPanel() {
       picking={picking}
       landingRating={landing ? landingRatingAt(rating, landing) : undefined}
       landingColours={rating.status === 'ready' ? { status: 'ready', method: rating.method } : rating}
+      // The view can be flown wherever the landing site can be picked: not on the surface, not in navigation.
+      site={canPick ? { name: DEFAULT_SITE.site.name, onGoTo: () => useSite.getState().goToSite() } : undefined}
       onPickLanding={canPick ? () => useRoutePick.getState().startRoutePick('landing-site') : undefined}
       settings={settings}
       onSettings={setSettings}
