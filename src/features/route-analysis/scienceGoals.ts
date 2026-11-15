@@ -31,7 +31,7 @@ import { surfaceDistanceKm } from './routeDistance'
 
 /**
  * How far from the start a stop may be, km. A project choice, not a cited
- * figure: no official source gives a suited walking range on Mars.
+ * figure: no source read for the app gives a suited walking range on Mars.
  */
 export const DEFAULT_MAX_WALK_KM = 5
 
@@ -44,6 +44,7 @@ const STOP_INSET_KM = 0.05
 const SIM_3464_CITATION =
   'Sun, V.Z., and Stack, K.M., 2020, Geologic map of Jezero crater and the Nili Planum region, Mars: U.S. Geological Survey Scientific Investigations Map 3464, https://doi.org/10.3133/sim3464'
 
+// The table is SCIENCE_GOALS below; the number stays here, not in the words the app shows.
 const GOAL_METHOD = `Goal → unit table reviewed in the project's code: units chosen by their interpretation in ${SIM_3464_CITATION}, quoted verbatim`
 
 export const SCIENCE_GOALS: readonly ScienceGoal[] = [
@@ -94,7 +95,7 @@ export interface Xy {
  * 1% over a walk of a few km; the range uses the haversine distance.
  *
  * Throws when the start is not a valid coordinate or is too near a pole for
- * the plane; the shell's `planWalk` turns that into a reason.
+ * the plane; the shell turns that into a reason.
  */
 export function candidateStops(
   goal: ScienceGoal,
@@ -175,6 +176,8 @@ export function confirmStops(
   stops: readonly WalkStop[],
   reads: readonly Classified<GeologicUnit>[],
   maxWalkKm: number = DEFAULT_MAX_WALK_KM,
+  /** The reason for a stop the read confirms; `stopReason` for a stop chosen as `candidateStops` chooses. */
+  reasonFor: (unit: GeologicUnit, stop: WalkStop) => Classified<string> = (unit) => stopReason(goal, unit, maxWalkKm),
 ): WalkStop[] {
   const wanted = new Set(goal.unitNames)
   const out: WalkStop[] = []
@@ -189,7 +192,7 @@ export function confirmStops(
       return
     }
     if (!wanted.has(read.value.name)) return
-    out.push(renumbered(goal, stop, read, stopReason(goal, read.value, maxWalkKm), out.length + 1))
+    out.push(renumbered(goal, stop, read, reasonFor(read.value, stop), out.length + 1))
   })
   return out
 }
@@ -204,7 +207,7 @@ function renumbered(goal: ScienceGoal, stop: WalkStop, unit: Classified<Geologic
  * the start is "Start", so the stops after it count from 1, as the
  * search bar's stops do. Only the name: the ids keep counting the start.
  */
-function stopName(n: number): string {
+export function stopName(n: number): string {
   return `Stop ${n - 1}`
 }
 
@@ -220,9 +223,17 @@ function unconfirmedReason(goal: ScienceGoal, stop: WalkStop): Classified<string
 }
 
 /** Why one stop serves the goal: the unit's own interpretation, or failing that its description, quoted. */
-function stopReason(goal: ScienceGoal, unit: GeologicUnit, maxWalkKm: number): Classified<string> {
+export function stopReason(
+  goal: ScienceGoal,
+  unit: GeologicUnit,
+  maxWalkKm: number,
+  /** How the stop was placed and what bounds the walk; `candidateStops`' own by default. */
+  where: { placement?: string; reachBasis?: string } = {},
+): Classified<string> {
   const quote = firstSentence(unit.interpretation) ?? firstSentence(unit.description)
-  const method = `The ${unit.map.id} unit under the stop is one the goal "${goal.label}" visits (reviewed table, scienceGoals.ts); the stop is the point of that unit's polygon nearest the start, ${STOP_INSET_KM * 1000} m inside it, within ${maxWalkKm} km of the start (a project choice, not a cited range)`
+  const placement = where.placement ?? `the point of that unit's polygon nearest the start, ${STOP_INSET_KM * 1000} m inside it`
+  const basis = where.reachBasis ?? 'a project choice, not a cited range'
+  const method = `The ${unit.map.id} unit under the stop is one the goal "${goal.label}" visits (reviewed table, scienceGoals.ts); the stop is ${placement}, within ${maxWalkKm.toFixed(2)} km of the start (${basis})`
   return derived(quote ? `${unit.name}: "${quote}"` : `${unit.name}, a unit the goal "${goal.label}" visits`, method)
 }
 
