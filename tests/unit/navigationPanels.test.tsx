@@ -38,6 +38,17 @@ describe('HazardsPanel in the navigation column', () => {
     )
   })
 
+  it('separates only a state that shares the heading line', () => {
+    const SEPARATOR = /<span aria-hidden="true"[^>]*>·<\/span>/
+    expect(heading(renderToStaticMarkup(<HazardsPanel route={null} />))).toMatch(SEPARATOR)
+    expect(heading(renderToStaticMarkup(<HazardsPanel route={route} />))).toMatch(SEPARATOR)
+    // Scanned and none found is a sentence on its own line: no dangling "·"
+    // after the heading, and the line is full width so it never shares it.
+    const none = renderToStaticMarkup(<HazardsPanel route={withHazards(derived([], 'fixture scan'))} />)
+    expect(heading(none)).not.toMatch(SEPARATOR)
+    expect(none).toMatch(/<p class="basis-full[^"]*">Scanned for radiation: none found/)
+  })
+
   it('lists found hazards below the heading, with no one-line state', () => {
     const found = withHazards(
       derived(

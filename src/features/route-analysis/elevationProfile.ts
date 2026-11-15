@@ -113,7 +113,7 @@ export function planProfile(
   const spacingKm = totalKm / (points.length - 1)
   return derived(
     { points, totalDistanceKm: totalKm, spacingKm },
-    `${points.length} samples about every ${describeSpacing(spacingKm)} along the great-circle legs between the waypoints, every waypoint included`,
+    `${points.length} samples about every ${describeSpacing(spacingKm)} along the line's great-circle stretches, every corner of the line included (the waypoints, or the route's own path where it has one)`,
   )
 }
 

@@ -164,12 +164,22 @@ describe('Plan a walk in steps', () => {
   const stepButton = (html: string, label: string) => html.match(new RegExp(`<button[^>]*>\\d\\. ${label}</button>`))![0]
 
   it('opens on the landing site and asks for a click on the map', () => {
-    const html = render({ step: 'landing', landing: null, picking: true })
+    const html = render({ step: 'landing', landing: null, picking: false })
     expect(html).toContain('No landing site yet.')
-    expect(html).toContain('Click the map to set the landing site.')
     expect(html).toMatch(/<button type="button" disabled=""[^>]*>Next<\/button>/)
     // Plan belongs to the next step.
     expect(html).not.toContain('Plan walks')
+  })
+
+  it('folds to its bar while the pick waits for its first click, so the colours under it show', () => {
+    const waiting = render({ step: 'landing', landing: null, picking: true })
+    expect(waiting).toContain('Plan a walk')
+    expect(waiting).not.toContain('No landing site yet.')
+    expect(waiting).not.toContain('>Next<')
+    // Once a site is set it opens, with the site and a word on moving it.
+    const set = render({ step: 'landing', picking: true })
+    expect(set).toContain('Landing site:')
+    expect(set).toContain('Click the map again to move it.')
   })
 
   it('names the three steps, marks the one on show, and opens only those that can be', () => {
@@ -233,9 +243,11 @@ describe('LandingStep rating row', () => {
   })
 
   it('names the colour and the slope with the method in the mark', () => {
-    const html = row(derived({ colour: 'green', slopeDeg: 2.14 }, 'fixture method'))
+    const html = row(derived({ colour: 'green', slopeDeg: 2.14, cellKm: 0.413 }, 'fixture method'))
     expect(html).toContain('Green')
     expect(html).toContain('2.1°')
+    // Its scale, so it never reads as the Point panel's slope over a few tens of metres.
+    expect(html).toMatch(/over <span[^>]*>0\.41 km<\/span> cells/)
     expect(html).toContain('fixture method')
   })
 

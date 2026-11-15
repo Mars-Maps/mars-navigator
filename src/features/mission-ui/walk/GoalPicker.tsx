@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ClassificationBadge } from '../../../components/ClassificationBadge'
 import { Panel } from '../../../components/Panel'
 import { PanelHeader } from '../../../components/PanelHeader'
@@ -94,7 +94,15 @@ export function GoalPickerView({
   /** Stand on the ground at the plan's first stop. */
   onStand: () => void
 }) {
-  const { minimized, toggle, bodyId } = useMinimized()
+  const { minimized: chosen, toggle, bodyId } = useMinimized()
+  // While the landing pick waits for its first click, the panel folds to its
+  // legend line: the colours under it show, and a click on them reaches the
+  // map, not the panel. It opens again once a site is set; its + opens
+  // it at once.
+  const [opened, setOpened] = useState(false)
+  const autoFolded = step === 'landing' && picking && landing === null && !opened
+  const minimized = chosen || autoFolded
+  const onToggle = autoFolded && !chosen ? () => setOpened(true) : toggle
   const legendMethod = minimisedLegendMethod(minimized, step, landingColours)
   const planning = status.kind === 'planning'
   const progress = { landingReady: landing !== null && landingProblem === null, hasPlan: plan !== null }
@@ -111,7 +119,7 @@ export function GoalPickerView({
   // No ×: the dock's button closes a tool's panel.
   return (
     <Panel surface="glass" compact={minimized} className="max-h-[calc(100vh-10rem)] w-full overflow-y-auto">
-      <PanelHeader title="Plan a walk" minimized={minimized} onToggleMinimized={toggle} bodyId={bodyId} spacing="mb-3">
+      <PanelHeader title="Plan a walk" minimized={minimized} onToggleMinimized={onToggle} bodyId={bodyId} spacing="mb-3">
         <h2 className="text-heading font-semibold text-ink">Plan a walk</h2>
       </PanelHeader>
       {/* The colours stay on the map while the panel is minimised, so what they are stays on show too. */}

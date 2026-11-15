@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { landingRatingAt, type LandingRatingRead, type LandingRatingState } from '../../src/app/landingRatingAt'
 import { createLandingRatingStore, readLandingRating, type LandingRatingSources } from '../../src/app/landingRatingRead'
 import { minimisedLegendMethod } from '../../src/features/mission-ui/walk/walkSteps'
-import { derived, unavailable } from '../../src/domain'
+import { MARS_MEAN_RADIUS_KM, derived, unavailable } from '../../src/domain'
 import type { GeologicUnitArea, MarsCoordinate, SiteBounds } from '../../src/domain'
 import { LANDING_COLOUR_ALPHA, LANDING_COLOUR_RGB, landingColourPixels } from '../../src/features/mars-3d/landingColourPixels'
 import { LandingLegend, LandingLegendLine } from '../../src/features/mission-ui/walk/LandingLegend'
@@ -165,7 +165,7 @@ describe('the rating at the landing site', () => {
   it('gives the cell’s colour and slope, DERIVED with the method', () => {
     expect(landingRatingAt(ready, west)).toEqual({
       classification: 'DERIVED',
-      value: { colour: 'green', slopeDeg: 1.5 },
+      value: { colour: 'green', slopeDeg: 1.5, cellKm: expect.closeTo(((BOX.north - BOX.south) * Math.PI * MARS_MEAN_RADIUS_KM) / 180, 6) },
       method: 'fixture method',
     })
   })

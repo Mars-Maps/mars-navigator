@@ -6,6 +6,12 @@ import { LandingLegend, type LandingColoursStatus } from './LandingLegend'
 export interface LandingReading {
   colour: 'green' | 'yellow' | 'red'
   slopeDeg: number
+  /**
+   * The rating's cell, km across: the slope is a mean over a cell this size,
+   * so the row says so and never reads as the Point panel's slope over a few
+   * tens of metres.
+   */
+  cellKm: number
 }
 
 const COLOUR_WORD: Record<LandingReading['colour'], string> = { green: 'Green', yellow: 'Yellow', red: 'Red' }
@@ -121,13 +127,14 @@ function RatingRow({ rating }: { rating: Classified<LandingReading> }) {
       </p>
     )
   }
-  const { colour, slopeDeg } = rating.value
+  const { colour, slopeDeg, cellKm } = rating.value
   return (
     <p className="flex items-center gap-1.5 text-caption text-ink-muted">
       <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-full ${COLOUR_DOT[colour]}`} />
       <span>
         Landing rating: <span className="text-ink">{COLOUR_WORD[colour]}</span>, slope{' '}
-        <span className="tabular-nums text-ink">{slopeDeg.toFixed(1)}°</span>
+        <span className="tabular-nums text-ink">{slopeDeg.toFixed(1)}°</span> over{' '}
+        <span className="tabular-nums">{cellKm.toFixed(2)} km</span> cells
       </span>
       <ClassificationBadge
         classification={rating.classification}
