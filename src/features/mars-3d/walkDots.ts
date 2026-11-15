@@ -6,9 +6,11 @@ const TEXTURE_PX = 32
 /**
  * A dot filled with `fill` and a dark rim, readable on every layer, as the
  * route's dots are. `hollow` leaves the middle clear: a ring, for the
- * landing site, so it never reads as a stop or a sample.
+ * landing site, so it never reads as a stop or a sample. `heavyRim` draws a
+ * wider, near-black rim, for the sample points: it holds their green apart
+ * from the green elevation relief.
  */
-export function createDotTexture(fill: string, hollow = false): CanvasTexture {
+export function createDotTexture(fill: string, hollow = false, heavyRim = false): CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = TEXTURE_PX
   canvas.height = TEXTURE_PX
@@ -16,9 +18,9 @@ export function createDotTexture(fill: string, hollow = false): CanvasTexture {
   if (ctx) {
     const c = TEXTURE_PX / 2
     ctx.beginPath()
-    ctx.arc(c, c, c * 0.72, 0, Math.PI * 2)
-    ctx.lineWidth = c * 0.32
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)'
+    ctx.arc(c, c, heavyRim ? c * 0.66 : c * 0.72, 0, Math.PI * 2)
+    ctx.lineWidth = heavyRim ? c * 0.44 : c * 0.32
+    ctx.strokeStyle = heavyRim ? 'rgba(0, 0, 0, 0.92)' : 'rgba(0, 0, 0, 0.75)'
     ctx.stroke()
     if (hollow) {
       ctx.lineWidth = c * 0.16

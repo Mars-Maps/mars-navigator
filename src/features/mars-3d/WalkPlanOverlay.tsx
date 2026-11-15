@@ -9,6 +9,9 @@ import {
   PointsMaterial,
   type Group,
 } from 'three'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 import { MAX_WALK_PLANS, useWalkPlan } from '../../state'
 import { GLOBE_RADIUS } from './constants'
 import { ROUTE_LIFT } from './overlayLift'
@@ -28,6 +31,16 @@ const STOP_PX = 5
  * Chrome at 0.45, where it was hard to find).
  */
 const UNSELECTED_OPACITY = 0.7
+/**
+ * The selected walk, in CSS pixels: a dashed line in its colour, wider than
+ * the others' one pixel, over a dark edge 1.5 px proud on each side, as the
+ * rover's path is drawn, so it reads on every base layer, the green
+ * elevation relief included.
+ */
+const SELECTED_WIDTH_PX = 3
+const SELECTED_EDGE_WIDTH_PX = SELECTED_WIDTH_PX + 3
+const EDGE_COLOR = 0x000000
+const EDGE_OPACITY = 0.6
 /** Over the route's trail (2); the selected walk over the others; the line's dots over the line. */
 const LINE_RENDER_ORDER = 2
 const SELECTED_LINE_RENDER_ORDER = 2.2
@@ -66,6 +79,7 @@ export function WalkPlanOverlay() {
   const groupRef = useRef<Group>(null)
   const linesRef = useRef<Line[]>([])
   const dotsRef = useRef<Points<BufferGeometry, PointsMaterial> | null>(null)
+  const selectedRef = useRef<{ line: LineSegments2; edge: LineSegments2 } | null>(null)
 
   useEffect(() => {
     const group = groupRef.current
@@ -85,11 +99,30 @@ export function WalkPlanOverlay() {
     dots.raycast = noRaycast
     dots.renderOrder = STOP_RENDER_ORDER
     dots.frustumCulled = false
+    // The selected walk's wide line and its edge share one geometry, replaced when the plans change.
+    const wide = new LineSegmentsGeometry()
+    const selectedLine = new LineSegments2(wide, new LineMaterial({ color: 0xffffff, linewidth: SELECTED_WIDTH_PX, dashed: true, transparent: true, depthWrite: false }))
+    const selectedEdge = new LineSegments2(
+      wide,
+      new LineMaterial({ color: EDGE_COLOR, linewidth: SELECTED_EDGE_WIDTH_PX, transparent: true, opacity: EDGE_OPACITY, depthWrite: false }),
+    )
+    for (const l of [selectedLine, selectedEdge]) {
+      l.raycast = noRaycast
+      l.frustumCulled = false
+      l.visible = false
+    }
+    selectedEdge.renderOrder = SELECTED_LINE_RENDER_ORDER
+    selectedLine.renderOrder = SELECTED_LINE_RENDER_ORDER + 0.1
     linesRef.current = lines
     dotsRef.current = dots
-    group.add(...lines, dots)
+    selectedRef.current = { line: selectedLine, edge: selectedEdge }
+    group.add(...lines, selectedEdge, selectedLine, dots)
     return () => {
-      group.remove(...lines, dots)
+      group.remove(...lines, selectedEdge, selectedLine, dots)
+      selectedLine.geometry.dispose()
+      selectedLine.material.dispose()
+      selectedEdge.material.dispose()
+      selectedRef.current = null
       for (const line of lines) {
         line.geometry.dispose()
         line.material.dispose()
@@ -105,7 +138,10 @@ export function WalkPlanOverlay() {
   useEffect(() => {
     const lines = linesRef.current
     const dots = dotsRef.current
-    if (lines.length === 0 || !dots) return
+    const selectedWide = selectedRef.current
+    if (lines.length === 0 || !dots || !selectedWide) return
+    selectedWide.line.visible = false
+    selectedWide.edge.visible = false
     lines.forEach((line, i) => {
       const plan = plans[i] ?? null
       const { segments, lineDistances, stops } = walkPlanGeometry(plan, GLOBE_RADIUS * LIFT)
@@ -122,6 +158,20 @@ export function WalkPlanOverlay() {
       line.material.opacity = selected ? 1 : UNSELECTED_OPACITY
       line.renderOrder = selected ? SELECTED_LINE_RENDER_ORDER : LINE_RENDER_ORDER
       if (!selected) return
+      // The selected walk is drawn wide instead of as the one-pixel line.
+      if (segments.length >= 6) {
+        const wide = new LineSegmentsGeometry()
+        wide.setPositions(segments)
+        const previousWide = selectedWide.line.geometry
+        selectedWide.line.geometry = wide
+        selectedWide.edge.geometry = wide
+        previousWide.dispose()
+        selectedWide.line.computeLineDistances()
+        selectedWide.line.material.color.setHex(walkColour(plan))
+        selectedWide.line.visible = true
+        selectedWide.edge.visible = true
+        line.visible = false
+      }
       const dotGeometry = new BufferGeometry()
       dotGeometry.setAttribute('position', new BufferAttribute(stops, 3))
       const previousDots = dots.geometry
@@ -134,6 +184,11 @@ export function WalkPlanOverlay() {
   useFrame(() => {
     const dash = (camera.position.length() - GLOBE_RADIUS) * DASH_PER_ALTITUDE
     for (const line of linesRef.current) setDash(line.material, dash)
+    const wide = selectedRef.current?.line.material
+    if (wide) {
+      wide.dashSize = dash
+      wide.gapSize = dash
+    }
   })
 
   return (
