@@ -3,7 +3,11 @@ import { LANDING_LEGEND } from '../../route-analysis/landingFavourability'
 import { CRATER_INTERIOR_LEGEND } from '../../route-analysis/landingLattice'
 
 /** Where the landing colours on the map are: being read, drawn (with how they were worked out), or why not. */
-export type LandingColoursStatus = { status: 'loading' } | { status: 'failed'; reason: string } | { status: 'ready'; method: string }
+export type LandingColoursStatus =
+  | { status: 'loading' }
+  | { status: 'failed'; reason: string }
+  /** `note`: where the colours are, said when they are not over the ground in view. */
+  | { status: 'ready'; method: string; note?: string }
 
 const ROWS = [
   { dot: 'bg-slope-gentle', name: 'Green', rule: LANDING_LEGEND.green },
@@ -56,6 +60,7 @@ export function LandingLegend({ colours }: { colours: LandingColoursStatus }) {
         <span>Landing colours on the map</span>
         <ClassificationBadge classification="DERIVED" detail={colours.method} />
       </p>
+      {colours.note && <p className="text-caption text-ink">{colours.note}</p>}
       <ul className="flex flex-col gap-0.5">
         {ROWS.map((row) => (
           <li key={row.name} className="flex items-start gap-1.5 text-caption text-ink-muted">

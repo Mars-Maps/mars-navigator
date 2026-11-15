@@ -39,6 +39,13 @@ export interface LandingLattice {
   /** Between columns at the box's middle latitude, and between rows, km. */
   spacingEastKm: number
   spacingNorthKm: number
+  /**
+   * Between columns at each row's own latitude, km, north to south. A
+   * lattice is laid out in degrees, so its columns close up towards a pole:
+   * over a site's sheet by under 1%, over a box hundreds of km high by
+   * enough to bend a slope, so the rating reads each row's own figure.
+   */
+  spacingEastKmByRow: Float64Array
   /** Cell centres as (latitude, longitude °E) pairs, rows north to south, each west to east. */
   points: Float64Array
 }
@@ -62,8 +69,10 @@ export function landingLattice(bounds: SiteBounds, minSpacingKm: number): Landin
   const dLon = (east - west) / cols
   const dLat = (north - south) / rows
   const points = new Float64Array(cols * rows * 2)
+  const spacingEastKmByRow = new Float64Array(rows)
   for (let r = 0; r < rows; r++) {
     const latitude = north - (r + 0.5) * dLat
+    spacingEastKmByRow[r] = dLon * kmPerDegLat * Math.cos(latitude * rad)
     for (let c = 0; c < cols; c++) {
       const k = (r * cols + c) * 2
       points[k] = latitude
@@ -75,6 +84,7 @@ export function landingLattice(bounds: SiteBounds, minSpacingKm: number): Landin
     rows,
     spacingEastKm: dLon * kmPerDegLat * Math.cos(((south + north) / 2) * rad),
     spacingNorthKm: dLat * kmPerDegLat,
+    spacingEastKmByRow,
     points,
   }
 }

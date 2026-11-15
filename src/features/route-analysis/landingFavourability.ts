@@ -65,6 +65,12 @@ export interface LandingGrid {
   /** Spacing of the lattice, km: between columns (east–west) and between rows (north–south). One figure each for the whole grid: over a site's sheet the east–west spacing of a lattice in degrees changes by well under 1%. */
   spacingEastKm: number
   spacingNorthKm: number
+  /**
+   * Between columns at each row, km, north to south: for a lattice tall
+   * enough that its columns close up towards a pole (`landingLattice`).
+   * Left out, every row is `spacingEastKm` apart.
+   */
+  spacingEastKmByRow?: ArrayLike<number>
   /** Metres, `rows × cols`, row-major; NaN where no model has a height. */
   heights: ArrayLike<number>
   /** Index into `models` per cell; ignored where the height is NaN. */
@@ -110,12 +116,20 @@ export function rateCell(slopeDeg: number, inside: boolean): LandingRating {
  * in a worker or rates a coarser one.
  */
 export function landingFavourability(grid: LandingGrid): LandingAnswer {
-  const { cols, rows, spacingEastKm, spacingNorthKm, heights, model, models, insideCrater } = grid
+  const { cols, rows, spacingEastKm, spacingNorthKm, spacingEastKmByRow, heights, model, models, insideCrater } = grid
   if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 1 || rows < 1) {
     return { ok: false, reason: `A grid of ${cols} × ${rows} cells is not a grid` }
   }
   if (!(spacingEastKm > 0) || !(spacingNorthKm > 0) || !Number.isFinite(spacingEastKm) || !Number.isFinite(spacingNorthKm)) {
     return { ok: false, reason: 'The grid spacing must be a number of km more than 0' }
+  }
+  if (spacingEastKmByRow) {
+    if (spacingEastKmByRow.length !== rows) return { ok: false, reason: `A grid of ${rows} rows needs ${rows} east–west spacings` }
+    for (let r = 0; r < rows; r++) {
+      if (!(spacingEastKmByRow[r] > 0) || !Number.isFinite(spacingEastKmByRow[r])) {
+        return { ok: false, reason: 'The grid spacing must be a number of km more than 0' }
+      }
+    }
   }
   const n = cols * rows
   if (heights.length !== n || model.length !== n || insideCrater.length !== n) {
@@ -125,9 +139,10 @@ export function landingFavourability(grid: LandingGrid): LandingAnswer {
   const rating = new Uint8Array(n)
   const reason = new Uint8Array(n)
   const slopeDeg = new Float32Array(n).fill(Number.NaN)
-  const dxM = spacingEastKm * 1000
   const dyM = spacingNorthKm * 1000
-  const minSpacingKm = Math.min(spacingEastKm, spacingNorthKm)
+  // The closest two samples are anywhere: the row nearest a pole when each row has its own spacing.
+  let minSpacingKm = Math.min(spacingEastKm, spacingNorthKm)
+  if (spacingEastKmByRow) for (let r = 0; r < rows; r++) minSpacingKm = Math.min(minSpacingKm, spacingEastKmByRow[r])
   const modelCount = models.length
   // A little slack, so a lattice laid out from this very model is not refused for rounding.
   const tooFine = models.map((m) => !(m.cellKm > 0) || m.cellKm * SLOPE_SPACING_CELLS > minSpacingKm * (1 + 1e-9))
@@ -136,6 +151,7 @@ export function landingFavourability(grid: LandingGrid): LandingAnswer {
   const used = new Uint8Array(modelCount)
 
   for (let r = 0; r < rows; r++) {
+    const dxM = (spacingEastKmByRow ? spacingEastKmByRow[r] : spacingEastKm) * 1000
     for (let c = 0; c < cols; c++) {
       const k = r * cols + c
       if (Number.isNaN(heights[k])) {

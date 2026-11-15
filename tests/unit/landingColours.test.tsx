@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { landingRatingAt, type LandingRatingRead, type LandingRatingState } from '../../src/app/landingRatingAt'
-import { createLandingRatingStore, readLandingRating, type LandingRatingSources } from '../../src/app/landingRatingRead'
+import { landingRatingAt, type LandingRatingLayer, type LandingRatingRead, type LandingRatingState } from '../../src/app/landingRatingAt'
+import { createLandingRatingStore, layeredRating, oneLayer, readLandingRating, type LandingRatingSources } from '../../src/app/landingRatingRead'
 import { minimisedLegendMethod } from '../../src/features/mission-ui/walk/walkSteps'
 import { MARS_MEAN_RADIUS_KM, derived, unavailable } from '../../src/domain'
 import type { GeologicUnitArea, MarsCoordinate, SiteBounds } from '../../src/domain'
@@ -136,29 +136,32 @@ describe('inside the crater, from the map’s units', () => {
 describe('the landing colours store', () => {
   beforeEach(() => useLandingColours.getState().clearLandingColours())
 
-  it('holds the grid to draw and clears it', () => {
-    const grid = { bounds: BOX, cols: 2, rows: 1, rating: Uint8Array.from([1, 3]) }
-    useLandingColours.getState().setLandingColours(grid)
-    expect(useLandingColours.getState().grid).toBe(grid)
+  it('holds the grids to draw, the one on top first, and clears them', () => {
+    const top = { bounds: BOX, cols: 2, rows: 1, rating: Uint8Array.from([1, 3]) }
+    const under = { bounds: { ...BOX, east: 79 }, cols: 1, rows: 1, rating: Uint8Array.from([2]) }
+    useLandingColours.getState().setLandingColours([top, under])
+    expect(useLandingColours.getState().grids).toEqual([top, under])
     useLandingColours.getState().clearLandingColours()
-    expect(useLandingColours.getState().grid).toBeNull()
+    expect(useLandingColours.getState().grids).toEqual([])
   })
 
-  it('refuses a grid whose codes do not match its size', () => {
-    useLandingColours.getState().setLandingColours({ bounds: BOX, cols: 2, rows: 2, rating: Uint8Array.from([1, 3]) })
-    useLandingColours.getState().setLandingColours({ bounds: BOX, cols: 0, rows: 0, rating: new Uint8Array(0) })
-    expect(useLandingColours.getState().grid).toBeNull()
+  it('refuses a grid whose codes do not match its size, the grids with it, and no grid at all', () => {
+    const good = { bounds: BOX, cols: 2, rows: 1, rating: Uint8Array.from([1, 3]) }
+    useLandingColours.getState().setLandingColours([{ bounds: BOX, cols: 2, rows: 2, rating: Uint8Array.from([1, 3]) }])
+    useLandingColours.getState().setLandingColours([good, { bounds: BOX, cols: 0, rows: 0, rating: new Uint8Array(0) }])
+    useLandingColours.getState().setLandingColours([])
+    expect(useLandingColours.getState().grids).toEqual([])
   })
 })
 
 describe('the rating at the landing site', () => {
-  const ready: LandingRatingState = {
-    status: 'ready',
+  const layer: LandingRatingLayer = {
     grid: { bounds: BOX, cols: 2, rows: 1, rating: Uint8Array.from([LANDING_RATING.green, LANDING_RATING.unavailable]) },
     slopeDeg: Float32Array.from([1.5, Number.NaN]),
     reason: Uint8Array.from([LANDING_REASON.none, LANDING_REASON.seam]),
     method: 'fixture method',
   }
+  const ready: LandingRatingState = { status: 'ready', ...oneLayer(layer) }
   const west: MarsCoordinate = { latitude: 18.5, longitudeEast: 77.2 }
   const east: MarsCoordinate = { latitude: 18.5, longitudeEast: 77.8 }
 
@@ -178,6 +181,70 @@ describe('the rating at the landing site', () => {
     expect(landingRatingAt(ready, { latitude: 20, longitudeEast: 77.2 }).classification).toBe('UNAVAILABLE')
     expect(landingRatingAt({ status: 'loading' }, west)).toEqual({ classification: 'UNAVAILABLE', reason: 'The landing rating is being read' })
     expect(landingRatingAt({ status: 'failed', reason: 'fixture failure' }, west)).toEqual({ classification: 'UNAVAILABLE', reason: 'fixture failure' })
+  })
+
+  describe('with the site’s sheet laid over the view', () => {
+    // The sheet: 77–78°E in four columns and three rows, its outermost ring with no rating as the rating leaves it,
+    // one rated cell and one cell with no rating (a seam) inside.
+    const E = LANDING_RATING.unavailable
+    const top: LandingRatingLayer = {
+      grid: { bounds: BOX, cols: 4, rows: 3, rating: Uint8Array.from([E, E, E, E, E, LANDING_RATING.green, E, E, E, E, E, E]) },
+      slopeDeg: Float32Array.from([NaN, NaN, NaN, NaN, NaN, 1.5, NaN, NaN, NaN, NaN, NaN, NaN]),
+      reason: Uint8Array.from([2, 2, 2, 2, 2, 0, LANDING_REASON.seam, 2, 2, 2, 2, 2]),
+      method: 'sheet method',
+    }
+    // The view: 76–79°E, 17.5–19.5°N in twelve columns and eight rows, every cell red, 0.25° a cell.
+    const under: LandingRatingLayer = {
+      grid: { bounds: { west: 76, east: 79, south: 17.5, north: 19.5 }, cols: 12, rows: 8, rating: new Uint8Array(96).fill(LANDING_RATING.red) },
+      slopeDeg: new Float32Array(96).fill(20),
+      reason: new Uint8Array(96),
+      method: 'view method',
+    }
+    const read = layeredRating(top, under, 'the fixture sheet')
+    const state: LandingRatingState = { status: 'ready', ...read }
+    const at = (latitude: number, longitudeEast: number) => landingRatingAt(state, { latitude, longitudeEast })
+
+    it('leaves no rating in a cell of the view wholly under the sheet’s rated ground, and keeps the cells that reach its outer ring', () => {
+      expect(read.layers[0]).toBe(top)
+      const cleared = [...read.layers[1].grid.rating].flatMap((code, k) => (code === 0 ? [k] : []))
+      // Inside the ring the sheet is 77.25–77.75°E, 18.33–18.67°N: the view's row 18.5–18.25°N does not fit, nor 18.75–18.5°N.
+      expect(cleared).toEqual([])
+      // A sheet with a thinner ring holds whole cells of the view.
+      const thin: LandingRatingLayer = { ...top, grid: { ...top.grid, cols: 40, rows: 40, rating: new Uint8Array(1600) }, slopeDeg: new Float32Array(1600), reason: new Uint8Array(1600) }
+      const over = layeredRating(thin, under, 'the fixture sheet').layers[1].grid.rating
+      const gone = [...over].flatMap((code, k) => (code === 0 ? [k] : []))
+      // Rows 18.75–18.5 and 18.5–18.25°N (3 and 4), columns 77.25–77.5 and 77.5–77.75°E (5 and 6).
+      expect(gone).toEqual([3 * 12 + 5, 3 * 12 + 6, 4 * 12 + 5, 4 * 12 + 6])
+      expect([...under.grid.rating].every((code) => code === LANDING_RATING.red)).toBe(true)
+    })
+
+    it('names both readings in the method', () => {
+      expect(read.method).toContain('the fixture sheet')
+      expect(read.method).toContain('sheet method')
+      expect(read.method).toContain('view method')
+    })
+
+    it('rates a point by the first layer with a colour for it, as the map draws it', () => {
+      // The sheet's rated cell: the sheet's colour, never the view's under it.
+      expect(at(18.5, 77.3)).toMatchObject({ classification: 'DERIVED', value: { colour: 'green', slopeDeg: 1.5 }, method: 'sheet method' })
+      // The sheet's outer ring has no colour of its own: the view's shows there.
+      expect(at(18.9, 77.1)).toMatchObject({ classification: 'DERIVED', value: { colour: 'red' }, method: 'view method' })
+      // Outside the sheet: the view's.
+      expect(at(19.2, 78.5)).toMatchObject({ value: { colour: 'red' }, method: 'view method' })
+      expect(at(30, 78.5).classification).toBe('UNAVAILABLE')
+    })
+
+    it('gives the sheet’s reason where neither layer has a colour', () => {
+      const bare: LandingRatingState = {
+        status: 'ready',
+        ...read,
+        layers: [top, { ...under, grid: { ...under.grid, rating: new Uint8Array(96) } }],
+      }
+      expect(landingRatingAt(bare, { latitude: 18.5, longitudeEast: 77.6 })).toEqual({
+        classification: 'UNAVAILABLE',
+        reason: LANDING_REASON_TEXT[LANDING_REASON.seam],
+      })
+    })
   })
 
   it('has a text for every reason code and none for 0 or an unknown one', () => {
@@ -210,6 +277,12 @@ describe('LandingLegend', () => {
     expect(html).toContain('fixture method')
   })
 
+  it('says where the colours are when they are not over the ground in view, and nothing more when they are', () => {
+    const noted = renderToStaticMarkup(<LandingLegend colours={{ status: 'ready', method: 'fixture method', note: 'fixture note' }} />)
+    expect(noted).toContain('fixture note')
+    expect(renderToStaticMarkup(<LandingLegend colours={{ status: 'ready', method: 'fixture method' }} />)).not.toContain('fixture note')
+  })
+
   it('shows no swatches while the colours are being read, and says so', () => {
     const html = renderToStaticMarkup(<LandingLegend colours={{ status: 'loading' }} />)
     expect(html).toContain('role="status"')
@@ -231,7 +304,7 @@ describe('reading the landing rating', () => {
     { label: 'Fine fixture model', source: 'fixture', cellKm: 0.02, site: true },
     { label: 'Coarse fixture model', source: 'fixture', cellKm: 0.2, site: false },
   ]
-  /** The fine model covers the west half; `fineAnswers` false is that model's read failing, the coarse one filling in. */
+  /** The fine model covers the west half; `fineAnswers` false is that model's read failing, the coarse one filling in, as the chain reports it. */
   const sources = (fineAnswers: boolean, hole = false): LandingRatingSources => ({
     elevationsAt: async (points) => {
       const n = points.length / 2
@@ -239,10 +312,10 @@ describe('reading the landing rating', () => {
       const sourceIndex = new Uint8Array(n)
       for (let i = 0; i < n; i++) sourceIndex[i] = fineAnswers && points[i * 2 + 1] < 77.25 ? 0 : 1
       if (hole) heights[3] = NaN
-      return derived({ heights, sourceIndex, sources: MODELS }, 'fixture heights')
+      const failed = fineAnswers ? {} : { failed: [{ model: 0, reason: 'Fine fixture model: fixture outage' }] }
+      return derived({ heights, sourceIndex, sources: MODELS, ...failed }, 'fixture heights')
     },
     unitAreas: async () => derived([], 'fixture map'),
-    covers: [(_lat, lon) => lon < 77.25, () => true],
   })
 
   it('rates the lattice when every model that covers it answered', async () => {
@@ -253,9 +326,41 @@ describe('reading the landing rating', () => {
     expect(read.method).toContain('Horn')
   })
 
-  it('refuses a read where a model that covers the ground gave nothing: the coarser model filled in and the answer only looks whole', async () => {
+  it('hands the read its signal, so a view left behind stops reading', async () => {
+    const controller = new AbortController()
+    let seen: AbortSignal | null = null
+    const watched = { ...sources(true), elevationsAt: async (points: Float64Array, signal: AbortSignal) => ((seen = signal), sources(true).elevationsAt(points, signal)) }
+    await readLandingRating(PLACE, 0.41, watched, controller.signal)
+    expect(seen).toBe(controller.signal)
+  })
+
+  it('rates a box hundreds of km high on each row’s own east–west spacing', async () => {
+    // A plane rising 100 m per degree east: the same heights are steeper where the columns are closer.
+    const tall = { name: 'Tall fixture', bounds: { south: 40, north: 60, west: 100, east: 120 } }
+    const plane: LandingRatingSources = {
+      elevationsAt: async (points) => {
+        const n = points.length / 2
+        const heights = new Float32Array(n)
+        for (let i = 0; i < n; i++) heights[i] = points[i * 2 + 1] * 100
+        return derived({ heights, sourceIndex: new Uint8Array(n), sources: [MODELS[1]] }, 'fixture heights')
+      },
+      unitAreas: async () => derived([], 'fixture map'),
+    }
+    const read = await readLandingRating(tall, 20, plane)
+    if (typeof read === 'string') throw new Error(read)
+    const { cols, rows } = read.grid
+    const kmPerDeg = (MARS_MEAN_RADIUS_KM * Math.PI) / 180
+    const slopeAt = (latitude: number) => (Math.atan(100 / (kmPerDeg * 1000 * Math.cos((latitude * Math.PI) / 180))) * 180) / Math.PI
+    const rowLatitude = (r: number) => 60 - ((r + 0.5) * 20) / rows
+    const mid = Math.floor(cols / 2)
+    expect(read.slopeDeg[1 * cols + mid]).toBeCloseTo(slopeAt(rowLatitude(1)), 3)
+    expect(read.slopeDeg[(rows - 2) * cols + mid]).toBeCloseTo(slopeAt(rowLatitude(rows - 2)), 3)
+    expect(read.slopeDeg[1 * cols + mid]).toBeGreaterThan(read.slopeDeg[(rows - 2) * cols + mid] * 1.3)
+  })
+
+  it('refuses a read where the chain could not read a model: the coarser model filled in and the answer only looks whole', async () => {
     const read = await readLandingRating(PLACE, 0.41, sources(false))
-    expect(read).toBe('The heights could not be read from one of the elevation models (Fine fixture model)')
+    expect(read).toBe('The heights could not be read from one of the elevation models (Fine fixture model: fixture outage)')
   })
 
   it('refuses a read with a cell that has no height, and says how many', async () => {
@@ -270,26 +375,60 @@ describe('reading the landing rating', () => {
   })
 })
 
-describe('the landing rating kept for the visit', () => {
-  const GOOD: LandingRatingRead = {
+describe('the landing rating store', () => {
+  const GOOD: LandingRatingRead = oneLayer({
     grid: { bounds: BOX, cols: 1, rows: 1, rating: Uint8Array.from([1]) },
     slopeDeg: Float32Array.from([1]),
     reason: Uint8Array.from([0]),
     method: 'fixture method',
-  }
+  })
   const settle = () => new Promise((r) => setTimeout(r, 0))
 
-  it('reads once however often it is asked, and keeps a good read', async () => {
+  it('reads once however often the same ground is asked for, and keeps a good read', async () => {
     let reads = 0
     const store = createLandingRatingStore(async () => (reads++, GOOD))
-    store.ensure()
-    store.ensure()
+    store.show({ key: 'a' })
+    store.show({ key: 'a' })
     expect(store.snapshot().status).toBe('loading')
     await settle()
     expect(store.snapshot()).toMatchObject({ status: 'ready', method: 'fixture method' })
-    store.ensure()
+    store.show({ key: 'a' })
     await settle()
     expect(reads).toBe(1)
+  })
+
+  it('reads again for other ground, and keeps the rating on show until the new one is in', async () => {
+    const asked: string[] = []
+    const store = createLandingRatingStore(async (ask: { key: string }) => (asked.push(ask.key), { ...GOOD, method: `method ${ask.key}` }))
+    const seen: string[] = []
+    store.subscribe(() => seen.push(store.snapshot().status))
+    store.show({ key: 'a' })
+    await settle()
+    store.show({ key: 'b' })
+    expect(store.snapshot()).toMatchObject({ status: 'ready', method: 'method a' })
+    await settle()
+    expect(store.snapshot()).toMatchObject({ status: 'ready', method: 'method b' })
+    expect(asked).toEqual(['a', 'b'])
+    // Never back to loading in between: the colours do not blink as the map moves.
+    expect(seen).toEqual(['ready', 'ready'])
+  })
+
+  it('cancels a read the view has left, and never shows its answer', async () => {
+    const signals: AbortSignal[] = []
+    const answers: ((r: LandingRatingRead) => void)[] = []
+    const store = createLandingRatingStore(
+      (_ask: { key: string }, signal) => (signals.push(signal), new Promise<LandingRatingRead>((resolve) => answers.push(resolve))),
+    )
+    store.show({ key: 'a' })
+    store.show({ key: 'b' })
+    expect(signals[0].aborted).toBe(true)
+    expect(signals[1].aborted).toBe(false)
+    // The old read answers late, after the new one.
+    answers[1]({ ...GOOD, method: 'method b' })
+    await settle()
+    answers[0]({ ...GOOD, method: 'method a' })
+    await settle()
+    expect(store.snapshot()).toMatchObject({ status: 'ready', method: 'method b' })
   })
 
   it('does not keep a failed read: the next ask says loading, tries again and tells its listeners', async () => {
@@ -297,10 +436,10 @@ describe('the landing rating kept for the visit', () => {
     const store = createLandingRatingStore(async () => answers.shift() ?? 'no more')
     const seen: string[] = []
     store.subscribe(() => seen.push(store.snapshot().status))
-    store.ensure()
+    store.show({ key: 'a' })
     await settle()
     expect(store.snapshot()).toEqual({ status: 'failed', reason: 'fixture failure' })
-    store.ensure()
+    store.show({ key: 'a' })
     expect(store.snapshot().status).toBe('loading')
     await settle()
     expect(store.snapshot().status).toBe('ready')
@@ -311,7 +450,7 @@ describe('the landing rating kept for the visit', () => {
     const store = createLandingRatingStore(async () => {
       throw new Error('fixture throw')
     })
-    store.ensure()
+    store.show({ key: 'a' })
     await settle()
     expect(store.snapshot()).toEqual({ status: 'failed', reason: 'The landing rating failed: fixture throw' })
   })

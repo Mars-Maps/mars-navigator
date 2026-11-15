@@ -157,7 +157,11 @@ export function WalkPlannerPanel() {
       landingProblem={landingProblem}
       picking={picking}
       landingRating={landing ? landingRatingAt(rating, landing) : undefined}
-      landingColours={rating.status === 'ready' ? { status: 'ready', method: rating.method } : rating}
+      landingColours={
+        rating.status === 'ready'
+          ? { status: 'ready', method: rating.method, ...(rating.note ? { note: rating.note } : {}) }
+          : rating
+      }
       onPickLanding={canPick ? () => useRoutePick.getState().startRoutePick('landing-site') : undefined}
       settings={settings}
       onSettings={setSettings}
