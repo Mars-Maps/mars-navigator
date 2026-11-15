@@ -113,7 +113,7 @@ export function GoalPickerView({
   canStand: boolean
   /** Stand on the ground at the plan's first stop. */
   onStand: () => void
-  /** False where navigation cannot be entered from here (the welcome screen, or while navigating). */
+  /** False where the walk cannot be handed to navigation (the welcome screen, or a route already being followed); the panel says so. */
   canNavigate?: boolean
   /** Hands the plan on show to navigation; absent where no route planner is given. */
   onNavigate?: () => void
@@ -311,11 +311,14 @@ function PlanSummary({
           type="button"
           disabled={!canNavigate}
           onClick={onNavigate}
-          title="Navigate from the landing site through this walk's stops and back, by the fastest or the most energy-efficient way"
+          title="Navigate from the landing site through this walk's stops and back: by the fastest or the most energy-efficient way found on the terrain, or straight between the stops"
           className="w-full rounded-control border border-line px-3 py-2 text-body text-ink transition-colors duration-(--duration-fast) hover:bg-surface-raised disabled:cursor-not-allowed disabled:text-ink-subtle/60"
         >
           Navigate this walk
         </button>
+      )}
+      {onNavigate && !canNavigate && (
+        <p className="text-caption text-ink-muted">A walk is navigated from the map view: end the route being followed first.</p>
       )}
       <ol className="flex flex-col gap-2">
         {plan.stops.map((stop, i) => {

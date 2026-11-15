@@ -10,7 +10,7 @@ import type { RouteTerrain } from '../features/route-analysis/strategies/types'
  * joins them.
  *
  * Every strategy answers at once, in the UI's order; `strategies` narrows
- * the list where only some apply (a planned walk is navigated by two). A strategy without a
+ * the list where only some apply (a planned walk is not offered the scientific route). A strategy without a
  * method returns its option with `path` UNAVAILABLE and the reason, so the
  * picker can list it honestly; the store picks the first with a DERIVED
  * path to draw (`defaultRouteOption`). A strategy that routes on terrain
