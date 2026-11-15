@@ -1,8 +1,9 @@
 # Mars Navigator
 
-**Plan a walk on Mars, then walk it.** Mars Navigator is a web map of Mars for
-planning and following a route on the surface at Jezero crater, where the
-Perseverance rover landed. It is built on open NASA, USGS and ESA data, and
+**Plan a walk on Mars, then walk it.** Mars Navigator is a web-based mapping application
+that helps users plan and follow routes across the Martian surface, focusing on 
+Jezero crater, the landing site of NASA's Perseverance rover.
+It is built on open NASA, USGS and ESA data, and
 every figure on screen says where it comes from.
 
 **Live:** [marsmaps.space](https://marsmaps.space) · desktop browser, no
