@@ -55,29 +55,46 @@ The application distinguishes scientific measurements from calculated or simulat
 
 ## The data
 
-Everything is read from public services at runtime or committed with its
-citation. No API key is needed.
+Mars Navigator combines publicly available planetary datasets from NASA, USGS, ESA and other scientific institutions. The application retrieves information from public services during runtime or uses datasets included in the repository with their corresponding source references.
 
-| What | Source |
+No API key is required to access the application's supported public data services.
+
+### Scientific data sources
+
+| Category | Data source |
 |---|---|
-| Base map layers | NASA Solar System Treks (Mars Trek): Viking colour mosaic, MOLA shaded relief, THEMIS day and night infrared, USGS geologic map of Mars (SIM 3292) |
-| Close-up ground imagery | Mars 2020 Terrain Relative Navigation HiRISE (25 cm) and CTX (6 m) orthomosaics of Jezero, USGS; CTX global mosaic, Murray Lab, Caltech |
-| Elevation | The global HRSC–MOLA blended elevation model (ESA/DLR/FU Berlin with NASA and USGS) and the official elevation models of Jezero |
-| Geology of Jezero | USGS geologic map of Jezero crater (SIM 3464) |
-| Rover path and photos | The Perseverance rover's traverse, waypoints and raw images, NASA/JPL-Caltech |
-| Temperature | Modelled from TES thermal inertia and albedo grids (derived, ± 10 K), validated against and shown next to the rovers' measurements: MEDA at Jezero, REMS at Gale |
-| Place names | USGS Gazetteer of Planetary Nomenclature |
+| Planetary base maps | NASA Solar System Treks (Mars Trek), including Viking imagery, MOLA shaded relief, THEMIS infrared products and USGS geological mapping |
+| Detailed surface imagery | Mars 2020 Terrain Relative Navigation HiRISE and CTX orthomosaics of Jezero, together with the Caltech Murray Lab CTX global mosaic |
+| Elevation models | Global HRSC–MOLA blended elevation data and official elevation models covering Jezero crater |
+| Geological information | USGS geological map of Jezero crater (SIM 3464) |
+| Rover navigation and imagery | NASA/JPL-Caltech Perseverance traverse data, recorded waypoints and raw rover images |
+| Temperature information | Derived estimates using TES thermal inertia and albedo data, compared with MEDA and REMS measurements |
+| Planetary place names | USGS Gazetteer of Planetary Nomenclature |
 
-The full list, with each product's credit, licence and limits, is in
-[`DATA_SOURCES.md`](DATA_SOURCES.md).
+The temperature model has a stated uncertainty of approximately ±10 K. Its results should be interpreted as derived estimates rather than direct measurements.
+
+Detailed references, licensing information, data limitations and scientific attribution are maintained in [`DATA_SOURCES.md`](DATA_SOURCES.md).
 
 ## Scientific integrity
 
-Every value is classified as `OFFICIAL`, `DERIVED`, `SIMULATED` or
-`UNAVAILABLE`, and the interface shows which, with the source or the method.
-Simulated data is always labelled as such. An unknown value is shown as
-unavailable, never as zero or a guess, and a dataset's resolution is treated
-as a limit: the app says what it cannot answer instead of interpolating.
+Scientific transparency is an essential part of Mars Navigator. The application distinguishes between observed measurements, calculated values, simulated information and unavailable data.
+
+Every value that may be unknown is assigned one of four classifications:
+
+- **`OFFICIAL`:** Information obtained directly from an official scientific dataset, accompanied by its source.
+- **`DERIVED`:** A value calculated using existing information and an identified method.
+- **`SIMULATED`:** Information generated for demonstration purposes and explicitly identified as simulated.
+- **`UNAVAILABLE`:** Information that cannot be reliably provided, displayed with an explanation rather than a fabricated number.
+
+These classifications help prevent estimates or demonstrations from being mistaken for direct scientific observations.
+
+### Data limitations
+
+Scientific datasets differ in spatial resolution, geographic coverage and measurement accuracy. Mars Navigator treats these limitations as part of the information presented to users.
+
+Where the available data cannot support a reliable answer, the application identifies the limitation instead of displaying an unsupported estimate. Unknown values are not automatically replaced with zero.
+
+The objective is to make planetary exploration understandable while preserving a clear distinction between measured data, scientific calculations and simulated representations.
 
 ## Team
 
