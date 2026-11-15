@@ -182,7 +182,11 @@ over the elevation model that the terrain strategies share; `walkingSpeed.ts`
 and `metabolicCost.ts` are its cost models. `walkLegs.ts`, `hazards.ts`,
 `mappedObstacles.ts`, `pointSlope.ts` and `profileSlope.ts` produce slopes
 and hazards; `scienceGoals.ts` maps science goals to geologic units and
-stops; `elevationProfile.ts`, `terrainProfile.ts` and `terrainProfileGrid.ts`
+stops. Plan a walk's three walks are `flatBedrockWalk.ts`, `transectLine.ts`
+with `transectWalk.ts` (rim to floor) and `roverCheckWalk.ts`;
+`walkBudget.ts` costs a walk in time and energy, fits it to the mission
+settings and places its samples; `landingFavourability.ts` and
+`landingLattice.ts` rate the ground for a landing site; `elevationProfile.ts`, `terrainProfile.ts` and `terrainProfileGrid.ts`
 sample heights; `thermalModel.ts`, `temperatureModel.ts` and
 `temperatureLayer.ts` are the surface temperature estimate;
 `atmosphericShielding.ts` applies the shielding rule; `photoPositions.ts`
@@ -217,7 +221,11 @@ where it sits and which view modes show it; `layout/AppLayout.tsx` renders
 the slots and takes the real panels through its `panels` prop. The `use*`
 hooks and their plain modules (`elevation.ts`, `planRoute.ts`,
 `walkPlanner.ts`, `surfaceLayers.ts`, `stopPhotos.ts`, `roverFeed.ts`, …) are
-where adapters meet route-analysis. `viewModeTriggers.ts` decides when the
+where adapters meet route-analysis. Plan a walk runs in `WalkPlannerPanel.tsx`:
+`walkDrafts.ts` reads what each of the three walks needs (map units, the
+rover traverse, the place names, heights) and `planWalks.ts` plans them side
+by side, one failing never failing the others, and checks each plan against
+the walk contract in `src/domain/walk.ts` before the store takes it. `viewModeTriggers.ts` decides when the
 view mode changes.
 
 ## How to extend
