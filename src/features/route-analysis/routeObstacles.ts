@@ -6,6 +6,7 @@ import {
   type Hazard,
   type MarsCoordinate,
   type RouteStrategy,
+  type SiteBounds,
 } from '../../domain'
 import type { HazardDetector } from './hazards'
 import { CRATER_NEAR_KM, OBSTACLE_KINDS, firstInside, isKind, named, nearestOnLeg, segmentCrossing } from './mappedObstacles'
@@ -17,6 +18,25 @@ import type { SearchedLeg } from './terrainSearch'
  * module, read when the first route is searched: the route strategies load
  * with the app, and this is not needed until a route exists.
  */
+
+/**
+ * Whether the straight stretch a → b has any point in `bounds`: an end
+ * inside it, or the stretch crossing one of its four edges (both ends can be
+ * outside a sheet whose corner the stretch cuts). In degrees, where the path
+ * is straight and the sheet a rectangle; not for a stretch across 0/360°E,
+ * which no sheet with edges here reaches.
+ */
+export function stretchMeetsBounds(a: MarsCoordinate, b: MarsCoordinate, bounds: SiteBounds): boolean {
+  if (insideBounds(a, bounds) || insideBounds(b, bounds)) return true
+  const xy = (c: MarsCoordinate) => ({ x: c.longitudeEast, y: c.latitude })
+  const corners = [
+    { x: bounds.west, y: bounds.south },
+    { x: bounds.east, y: bounds.south },
+    { x: bounds.east, y: bounds.north },
+    { x: bounds.west, y: bounds.north },
+  ]
+  return corners.some((corner, i) => segmentCrossing(xy(a), xy(b), corner, corners[(i + 1) % 4]) !== null)
+}
 
 /** The scan as the route builder takes it. */
 export type MappedObstacleScan = typeof mappedObstacleScan
@@ -174,14 +194,15 @@ export function mappedObstacleScan(
     const { features } = leg.obstacles
     const nodes = leg.nodes.map((node) => node.coordinate)
     const sheet = features.covers
-    const outside = sheet ? nodes.filter((c) => !insideBounds(c, sheet)).length : 0
-    if (outside === nodes.length) {
-      // The leg's box touches the sheet but its path does not: none of it is on mapped ground, as if unread.
+    if (sheet && !nodes.some((c, n) => n > 0 && stretchMeetsBounds(nodes[n - 1], c, sheet))) {
+      // The leg's box touches the sheet but no stretch of its path does: none of it is on mapped ground, as if unread.
       unread.push(`leg ${numbers[l]}: it lies outside the map's sheet, where nothing is mapped`)
       open = null
       return
     }
-    if (outside > 0) gaps.push(`leg ${numbers[l]}: part of it lies outside the map's sheet, where nothing is mapped`)
+    if (sheet && nodes.some((c) => !insideBounds(c, sheet))) {
+      gaps.push(`leg ${numbers[l]}: part of it lies outside the map's sheet, where nothing is mapped`)
+    }
     if (open === null) {
       open = { path: [], reads: [] }
       runs.push(open)

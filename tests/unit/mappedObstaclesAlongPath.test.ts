@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { GeologicFeatures } from '../../src/domain'
 import { CRATER_NEAR_KM } from '../../src/features/route-analysis/mappedObstacles'
-import { mappedObstaclesAlongPath, mergeFeatures } from '../../src/features/route-analysis/routeObstacles'
+import { mappedObstaclesAlongPath, mergeFeatures, stretchMeetsBounds } from '../../src/features/route-analysis/routeObstacles'
 import { MAP, at, line, xyOf } from './terrain.helpers'
 
 const features = (f: Partial<GeologicFeatures>): GeologicFeatures => ({ points: [], lines: [], areas: [], ...f })
@@ -109,5 +109,22 @@ describe('mergeFeatures', () => {
     expect(merged.lines.map((f) => f.kind)).toEqual(['crest of crater rim', 'delta lobe front'])
     expect(merged.areas).toHaveLength(2)
     expect(mergeFeatures([])).toEqual({ points: [], lines: [], areas: [] })
+  })
+})
+
+describe('stretchMeetsBounds', () => {
+  const sheet = { west: 77, east: 78, south: 18, north: 19 }
+  const c = (latitude: number, longitudeEast: number) => ({ latitude, longitudeEast })
+
+  it('holds for an end inside, and for a stretch that cuts a corner with both ends outside', () => {
+    expect(stretchMeetsBounds(c(18.5, 77.5), c(20, 80), sheet)).toBe(true)
+    expect(stretchMeetsBounds(c(17.9, 77.5), c(18.5, 78.1), sheet)).toBe(true)
+    expect(stretchMeetsBounds(c(18.5, 76), c(18.5, 79), sheet)).toBe(true)
+  })
+
+  it('fails for a stretch that passes the sheet by, however near', () => {
+    expect(stretchMeetsBounds(c(17.9, 76), c(17.9, 79), sheet)).toBe(false)
+    expect(stretchMeetsBounds(c(17.5, 77.9), c(18.2, 78.6), sheet)).toBe(false)
+    expect(stretchMeetsBounds(c(19.5, 76.5), c(19.5, 76.5), sheet)).toBe(false)
   })
 })

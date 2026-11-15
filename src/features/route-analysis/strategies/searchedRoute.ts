@@ -2,13 +2,14 @@ import {
   SUITED_SLOPE_LIMIT,
   derived,
   official,
+  unavailable,
   type MarsCoordinate,
   type RouteOption,
   type RouteRequest,
   type RouteStrategy,
   type SurfacePoint,
 } from '../../../domain'
-import { HAZARD_DETECTORS, scanHazards } from '../hazards'
+import { HAZARD_DETECTORS, scanHazards, type HazardDetector } from '../hazards'
 import { OBSTACLE_KINDS } from '../mappedObstacles'
 import type { MappedObstacleScan } from '../routeObstacles'
 import { METABOLIC_COST_METHOD, walkingKcalPerKm } from '../metabolicCost'
@@ -140,6 +141,12 @@ export async function planSearchedRoute(
   return searchedOption(strategy, request, legs, walked, search, mappedObstacleScan)
 }
 
+/** In place of the mapped-obstacle scan when its module could not be read: not scanned, with that reason. */
+const SCAN_NOT_LOADED: HazardDetector = {
+  ...HAZARD_DETECTORS['mapped-obstacle'],
+  detect: () => unavailable('The scan of what the geologic map marks could not be loaded; plan the route again to retry'),
+}
+
 /** The option from the legs found; `numbers` are the legs' places in the user's list, a skipped leg counted. */
 function searchedOption(
   strategy: RouteStrategy,
@@ -172,7 +179,7 @@ function searchedOption(
   const kcal = steps.reduce((sum, step) => sum + step.km * walkingKcalPerKm(step.s), 0)
   const unchecked = legs.flatMap((leg, l) => (leg.obstacles.checked ? [] : [`leg ${numbers[l]}: ${leg.obstacles.reason}`]))
   const mapped = mappedObstacleScan?.(strategy, legs, numbers) ?? null
-  const scan = scanHazards(path, mapped ? { ...HAZARD_DETECTORS, 'mapped-obstacle': mapped.detector } : HAZARD_DETECTORS)
+  const scan = scanHazards(path, { ...HAZARD_DETECTORS, 'mapped-obstacle': mapped ? mapped.detector : SCAN_NOT_LOADED })
   const gaps = mapped?.gaps ?? []
   const partly = gaps.length > 0 && scan.scanned.includes('mapped-obstacle')
   const obstacles =

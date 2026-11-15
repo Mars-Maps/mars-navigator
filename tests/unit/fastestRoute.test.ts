@@ -437,6 +437,11 @@ describe('mapped obstacles along a searched route', () => {
     expect(off.option.hazardsScanned).toEqual(['radiation'])
     expect(off.option.hazardsPartlyScanned).toBeUndefined()
     expect(methodOf(off.option)).toMatch(/mapped-obstacle \(The geologic map was not read along the route \(leg 1: it lies outside the map's sheet/)
+    // Both ends outside a sheet the path cuts across: the part on it is scanned, and its crater found.
+    const strip = { ...sheet, west: at(0.3, 0).longitudeEast, east: at(0.7, 0).longitudeEast }
+    const across = await plan(flat, request(), { mapPoints: [crater(0.5, 0.03)], mapCovers: strip })
+    expect(mapped(across.option)).toHaveLength(1)
+    expect(across.option.hazardsPartlyScanned?.['mapped-obstacle']).toMatch(/leg 1: part of it lies outside the map's sheet/)
     // Wholly inside the sheet it is scanned outright.
     const inside = await plan(flat, request(), { mapCovers: { ...sheet, east: at(5, 0).longitudeEast } })
     expect(inside.option.hazardsScanned).toEqual(['radiation', 'mapped-obstacle'])
