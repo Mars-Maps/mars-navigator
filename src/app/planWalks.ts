@@ -19,6 +19,7 @@ import {
 import { legSlopeToFlag } from '../features/mission-ui/slopeLimit'
 import type { ElevationProfile } from '../features/route-analysis/elevationProfile'
 import { surfaceDistanceKm } from '../features/route-analysis/routeDistance'
+import { spannedAreaKm2 } from '../features/route-analysis/sampleSpread'
 import {
   fitsSettings,
   maxSamplesThatFit,
@@ -51,6 +52,12 @@ export interface WalkDraft {
    * samples are spread over the walk that is left, not only cut to it.
    */
   placesFor?: (path: readonly MarsCoordinate[]) => readonly number[]
+  /**
+   * The walk is a loop: its way back is over ground not walked yet, so the
+   * samples go round the whole of it. Without, a walk that comes back is
+   * sampled on the way out only. A loop cut to one place is no loop.
+   */
+  loop?: boolean
   /**
    * The samples, where the walk places and fits them itself (the transect,
    * the rover check): taken as they are, the shell only costs and checks
@@ -136,7 +143,7 @@ async function planOneWalk(
   try {
     const draft = await planner.drafts[kind](start, settings, signal)
     if (draft.classification === 'UNAVAILABLE') return fail(draft.reason)
-    const { goal, placesFor, notes = [] } = draft.value
+    const { goal, placesFor, loop = false, notes = [] } = draft.value
     let placesKm = draft.value.placesKm
     const slopeLimit = slopeLimitOf(settings)
     const own = draft.value.samples
@@ -152,7 +159,7 @@ async function planOneWalk(
       ])
       if (profile.classification === 'UNAVAILABLE') return fail(`The heights along the walk could not be read: ${profile.reason}`)
 
-      const placed = own ? { samples: [...own], note: null } : samplesFor(profile.value, settings, placesKm, wayOutKm(stops))
+      const placed = own ? { samples: [...own], note: null } : samplesFor(profile.value, settings, placesKm, loop && stops.length >= 4 ? undefined : wayOutKm(stops))
       const { samples } = placed
       // The walk's slope is its legs' slope, the figure their flags show, so
       // the fit and the flags never disagree; the profile's stretches only
@@ -171,7 +178,8 @@ async function planOneWalk(
         leftOff === 0
           ? null
           : `${leftOff} stop${leftOff === 1 ? ' was' : 's were'} left off the end of the walk: on the heights along the walk, going on to ${leftOff === 1 ? 'it' : 'them'} and coming back was over the time or the energy of the settings`
-      const note = joinSentences([placed.note, shortened, ...notes])
+      const spread = loop && stops.length >= 4 ? spreadNote(samples) : null
+      const note = joinSentences([placed.note, shortened, spread, ...notes])
       const plan: WalkPlan = { goal, stops, legs, slopeLimit, kind, settings, samples }
       const problem = walkPlanProblem(plan)
       if (problem !== null) return fail(problem)
@@ -225,6 +233,13 @@ function placesOnShorter(
   const outKm = wayOutKm(stops) ?? Infinity
   const places = placesFor ? placesFor(stops.slice(0, -1).map((s) => s.coordinate)) : placesKm.filter((km) => km <= outKm + 1e-9)
   return places.length > 0 ? places : undefined
+}
+
+/** How widely a loop's samples are spread, for its note; null with too few to span any ground. */
+function spreadNote(samples: readonly SampleStop[]): string | null {
+  const km2 = spannedAreaKm2(samples.map((s) => s.coordinate))
+  // Short on the card; what the figure is and is not is `SPANNED_AREA_METHOD`, in the walk's method.
+  return km2 > 0 ? `The samples span ${km2.toFixed(2)} km² (the area inside their outline, not ground measured)` : null
 }
 
 /** Sentences joined into one note, each ending in a full stop; null with none. */

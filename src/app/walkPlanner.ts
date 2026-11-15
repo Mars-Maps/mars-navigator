@@ -1,5 +1,6 @@
 import type { SourcedHeights } from '../data/adapters/LayeredElevation'
 import {
+  isAvailable,
   MARS_MEAN_RADIUS_KM,
   SUITED_SLOPE_LIMIT,
   derived,
@@ -91,8 +92,34 @@ export function createWalkPlanner(sources: WalkPlannerSources): WalkPlanner {
       const { FLAT_BEDROCK_GOAL, FLAT_BEDROCK_REACH_BASIS, FLAT_BEDROCK_REASONS, flatBedrockStops, floorSamplePlacesKm } = await import(
         '../features/route-analysis/flatBedrockWalk'
       )
-      const draft = flatBedrockStops(start, units.value, settings)
+      let draft = flatBedrockStops(start, units.value, settings)
       if (draft.classification === 'UNAVAILABLE') return draft
+      // A loop is chosen on the map alone. Its straight legs are then measured on the elevation model, and
+      // the next-best loop is taken while one of them is over the settings' slope limit.
+      const loopNotes: string[] = []
+      const choices = draft.value.loopChoices
+      if (draft.value.loop && choices > 1) {
+        // Loaded here, as the walk's own module is: a static import puts the first load over its 500 kB.
+        const [{ slopeLimitOf }, { legSlopeToFlag }] = await Promise.all([import('./planWalks'), import('../features/mission-ui/slopeLimit')])
+        const first = draft
+        let taken = -1
+        for (let choice = 0; choice < choices && taken < 0; choice++) {
+          const tried = choice === 0 ? first : flatBedrockStops(start, units.value, settings, choice)
+          if (tried.classification === 'UNAVAILABLE' || !tried.value.loop) continue
+          const round = [...tried.value.stops, returnStop(FLAT_BEDROCK_GOAL, tried.value.stops.length + 1, tried.value.stops[0])]
+          const legs = await walkLegs(round, sources.heights, sources.cellKmAlong, unavailable('Not read for this check'), slopeLimitOf(settings), signal)
+          const within = legs.every((leg) => {
+            const slope = legSlopeToFlag(leg.steepestSlopeDeg, leg.hazards)
+            return isAvailable(slope) && slope.value <= settings.maxSlopeDeg
+          })
+          if (within) {
+            draft = tried
+            taken = choice
+          }
+        }
+        if (taken > 0) loopNotes.push(`Loop ${taken + 1} of the ${choices} best: each one before it has a leg over the ${settings.maxSlopeDeg}° slope limit`)
+        if (taken < 0) loopNotes.push(`Each of the ${choices} best loops has a leg over the ${settings.maxSlopeDeg}° slope limit, so the best is shown with its flag`)
+      }
       // Each stop's unit as the map answers for its exact point, as the single-goal planner does.
       const reads = await Promise.all(draft.value.stops.map((s) => sources.unitAt(s.coordinate, signal)))
       const { outKm, placements, samples } = draft.value
@@ -103,12 +130,16 @@ export function createWalkPlanner(sources: WalkPlannerSources): WalkPlanner {
       if (stops.length < 2) return unavailable(FLAT_BEDROCK_REASONS.otherUnits)
       // On the stops as confirmed: a dropped stop changes the walk the places lie along. On the way
       // out only: the way back is for coming back, and over one polygon it is the ground already sampled.
-      const placesFor = (path: readonly MarsCoordinate[]) => floorSamplePlacesKm(path, units.value, samples)
+      // A loop comes back over ground not walked yet, so its way back is sampled too: the places lie
+      // round the closed walk. A loop the map's reads cut to one stop is a line out and back, as before.
+      const loop = draft.value.loop === true && stops.length >= 3
+      const placesFor = (path: readonly MarsCoordinate[]) =>
+        floorSamplePlacesKm(loop && path.length >= 3 ? [...path, path[0]] : path, units.value, samples)
       const placesKm = placesFor(stops.map((s) => s.coordinate))
       const method = draft.classification === 'DERIVED' ? draft.method : draft.source
       // The walk ends where it began. A stop the map dropped only shortens it, so the reach still holds.
       const closed = [...stops, returnStop(FLAT_BEDROCK_GOAL, stops.length + 1, stops[0])]
-      return derived({ goal: FLAT_BEDROCK_GOAL, stops: closed, ...(placesKm.length > 0 ? { placesKm, placesFor } : {}) }, method)
+      return derived({ goal: FLAT_BEDROCK_GOAL, stops: closed, ...(placesKm.length > 0 ? { placesKm, placesFor } : {}), ...(loop ? { loop } : {}), ...(loopNotes.length > 0 ? { notes: loopNotes } : {}) }, method)
     },
   }
 }

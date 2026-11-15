@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { spannedAreaKm2 } from '../../src/features/route-analysis/sampleSpread'
 import { plannedWalks, planWalks, type WalksPlanner } from '../../src/app/planWalks'
 import { sampleProfile, type ProfileHeights } from '../../src/app/routeProfile'
 import { craterFromNames, walkDrafts, type WalkDraftSources } from '../../src/app/walkDrafts'
@@ -96,7 +97,7 @@ async function plan(p = setup()) {
 }
 
 describe('walkDrafts: the flat bedrock', () => {
-  it('walks across the floor the landing site stands on, samples on it, and the contract accepts it', async () => {
+  it('walks a loop over the floor the landing site stands on, samples on it and spread over ground, and the contract accepts it', async () => {
     const floor = (await plan()).find((o) => o.kind === 'flat-bedrock')
     if (floor?.status !== 'planned') throw new Error(`expected a flat-bedrock walk: ${JSON.stringify(floor)}`)
     expect(walkPlanProblem(floor.plan)).toBeNull()
@@ -106,6 +107,46 @@ describe('walkDrafts: the flat bedrock', () => {
       const u = await unitAt(sample.coordinate)
       expect(u.classification !== 'UNAVAILABLE' && u.value.name).toBe('Jezero floor unit')
     }
+    // A loop: the samples go round it, the way back included, so they span ground and the note says how much.
+    expect(spannedAreaKm2(floor.plan.samples!.map((s) => s.coordinate))).toBeGreaterThan(0.1)
+    expect(floor.samplesNote).toMatch(/The samples span \d+\.\d\d km²/)
+    expect(floor.fit.fits).toBe(true)
+  })
+
+  it('takes the next-best loop when a leg of the best is over the slope limit on the heights', async () => {
+    const plannerOn = (heights: (points: Float64Array) => Float32Array) =>
+      createWalkPlanner({
+        site: SITE,
+        units: async () => official(UNITS, MAP.citation),
+        unitAt,
+        features: async () => official<GeologicFeatures>({ points: [], lines: [], areas: [] }, MAP.citation),
+        heights: async (points) => {
+          const h = heights(points)
+          return official({ heights: h, model: new Uint8Array(h.length), models: [MODEL] }, 'fixture chain')
+        },
+        cellKmAlong: () => 0.02,
+        traverse: async () => unavailable('fixture'),
+      })
+    const onFlat = await plannerOn(flat).flatBedrock(START, DEFAULT_MISSION_SETTINGS, signal())
+    if (onFlat.classification !== 'DERIVED') throw new Error('expected a draft on flat ground')
+    expect(onFlat.value.notes).toBeUndefined()
+    // A 300 m scarp across the best loop's first leg, halfway to its first stop.
+    const wallX = xOf(onFlat.value.stops[1].coordinate) / 2
+    expect(Math.abs(wallX)).toBeGreaterThan(0.1)
+    const scarp = (points: Float64Array) => {
+      const h = new Float32Array(points.length / 2)
+      for (let i = 0; i < h.length; i++) {
+        const x = xOf({ latitude: points[i * 2], longitudeEast: points[i * 2 + 1] })
+        h[i] = (wallX > 0 ? x > wallX : x < wallX) ? -2200 : -2500
+      }
+      return h
+    }
+    const onScarp = await plannerOn(scarp).flatBedrock(START, DEFAULT_MISSION_SETTINGS, signal())
+    if (onScarp.classification !== 'DERIVED') throw new Error('expected a draft beside the scarp')
+    expect(onScarp.value.loop).toBe(true)
+    expect(onScarp.value.notes?.join(' ')).toMatch(/^Loop \d+ of the \d+ best/)
+    // Every stop of the loop taken is on the landing site's side of the scarp.
+    for (const stop of onScarp.value.stops) expect(wallX > 0 ? xOf(stop.coordinate) < wallX : xOf(stop.coordinate) > wallX).toBe(true)
   })
 
   it('says the map’s reads disagreed when they drop every stop, not that no floor is in reach', async () => {
