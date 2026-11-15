@@ -241,7 +241,9 @@ No global surface radiation map exists, so radiation per coordinate is
   names adopted by the IAU; planetocentric, +East 0–360.
 - Committed as `src/data/places/marsNames.json` (name, feature type, centre,
   diameter, Gazetteer feature id), with its retrieval date. Read only by
-  `PlaceNamesAdapter`.
+  `PlaceNamesAdapter`; the search uses every name, and the rim-to-floor walk
+  takes Jezero's centre and diameter, and the named craters near it, so it
+  can tell the crater's own rim from smaller craters' rims.
 
 ## Reference constants
 

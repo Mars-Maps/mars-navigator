@@ -12,6 +12,7 @@ import {
   type Hazard,
   type SlopeLimit,
   type SurfaceImage,
+  SUITED_SLOPE_LIMIT,
 } from '../../src/domain'
 import { READING_ELEVATION_REASON, READING_SLOPE_REASON } from '../../src/features/mission-ui/pointFields'
 import { StopCard } from '../../src/features/mission-ui/stops/StopCard'
@@ -27,7 +28,8 @@ const UNIT: GeologicUnit = {
   interpretation: 'fixture-unit-interpretation',
   map: MAP,
 }
-const LIMIT: SlopeLimit = { deg: 20, label: 'fixture-limit-label', source: 'fixture-citation' }
+// The cited suited limit: only it carries an OFFICIAL mark with its citation.
+const LIMIT: SlopeLimit = SUITED_SLOPE_LIMIT
 
 const image = (id: string): SurfaceImage => ({
   id,
@@ -155,8 +157,8 @@ describe('StopCard', () => {
     const html = render({ slope: derived(23.4, 'fixture-slope') })
     expect(html).toContain('23.4° steep')
     expect(html).toContain('data-over-limit')
-    expect(html).toContain('Over the 20° limit: fixture-limit-label')
-    expect(html).toContain('fixture-citation')
+    expect(html).toContain(`Over the 20° limit: ${SUITED_SLOPE_LIMIT.label}`)
+    expect(html).toContain('NASA EVA-EXP-0075')
     expect(render({ slope: derived(20, 'fixture-slope') })).not.toContain('data-over-limit')
   })
 
@@ -264,7 +266,7 @@ describe('StopCard radiation warning', () => {
     expect(html).toContain('Highest point ')
     expect(html).toContain('0.68 of Gale&#x27;s')
     expect(html).toContain('fixture-shielding')
-    // The rule: about shielding, never a dose.
+    // The shielding rule: about shielding, never a dose.
     expect(html).not.toMatch(/higher dose|mSv/i)
   })
 
@@ -308,7 +310,7 @@ describe('StopCard leg into the stop', () => {
     const html = render({ legSlope: derived(23.3, 'fixture-leg-slope') })
     expect(html).toContain('23.3° steep')
     expect(html.match(/data-over-limit/g)).toHaveLength(1)
-    expect(html).toContain('Over the 20° limit: fixture-limit-label')
+    expect(html).toContain(`Over the 20° limit: ${SUITED_SLOPE_LIMIT.label}`)
     expect(render({ legSlope: derived(20, 'fixture-leg-slope') })).not.toContain('data-over-limit')
   })
 
@@ -322,7 +324,7 @@ describe('StopCard leg into the stop', () => {
     const html = render({ legSlope: unavailable('fixture-leg-part-not-checked'), legHazards: derived([SLOPE], 'fixture-scan') })
     expect(html).toContain('fixture-leg-part-not-checked')
     expect(html.match(/data-over-limit/g)).toHaveLength(1)
-    expect(html).toContain('Over the 20° limit: fixture-limit-label')
+    expect(html).toContain(`Over the 20° limit: ${SUITED_SLOPE_LIMIT.label}`)
   })
 
   it('does not flag a part-checked leg whose stretch has no figure', () => {

@@ -1,57 +1,112 @@
-import { useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { ClassificationBadge } from '../../../components/ClassificationBadge'
 import { Panel } from '../../../components/Panel'
 import { PanelHeader } from '../../../components/PanelHeader'
 import { useMinimized } from '../../../components/useMinimized'
-import { formatMarsCoordinate, type ScienceGoal, type WalkLeg, type WalkPlan } from '../../../domain'
+import {
+  formatMarsCoordinate,
+  type Classified,
+  type MarsCoordinate,
+  type ScienceGoal,
+  type WalkKind,
+  type WalkLeg,
+  type WalkPlan,
+} from '../../../domain'
 import { ClassifiedValue } from '../ClassifiedValue'
+import { LandingLegendLine, type LandingColoursStatus } from './LandingLegend'
+import { LandingStep, type LandingReading } from './LandingStep'
+import { isCitedSlopeLimit } from '../slopeLimit'
 import { LegDetail } from './LegDetail'
+import { MissionSettingsStep } from './MissionSettingsStep'
+import { settingsValid, type MissionSettings } from './missionSettings'
+import { WalkCards } from './WalkCards'
+import type { WalkOption } from './walkCardFigures'
 import { WalkPlanMap } from './WalkPlanMap'
-import type { WalkStart } from './walkStart'
+import { WALK_STEPS, minimisedLegendMethod, stepOpen, type WalkStep } from './walkSteps'
 
 /** Where the shell's planning is: nothing asked yet, working, or why it could not plan. */
 export type PlanStatus = { kind: 'idle' } | { kind: 'planning' } | { kind: 'failed'; reason: string }
 
 /**
- * The Plan a walk tool's panel: pick a science goal, plan from the
- * walk's start, and see the plan's stops and legs. Renders from props. The
- * shell runs the planner and puts the plan in the walk-plan store, which the
- * HUD, the stop card and the surface walk read; the figures shown here,
- * each leg's slope and flags included (`LegDetail`), are the plan's own,
- * never worked out again.
+ * The Plan a walk tool's panel, in three steps: the landing site, set
+ * by a click on the map; the mission settings, where the walk is planned;
+ * and the planned walk with its stops and legs. Renders from props.
+ * The shell holds the step, runs the pick and the planner, and puts the plan
+ * in the walk-plan store, which the HUD, the stop card and the surface walk
+ * read; the figures shown here, each leg's slope and flags included
+ * (`LegDetail`), are the plan's own, never worked out again.
+ *
+ * The second step holds the mission settings: four sliders and Plan
+ * walks, which plans the three scientific walks within them.
  */
 export function GoalPickerView({
-  goals,
-  start,
+  step,
+  onStep,
+  landing,
+  landingProblem,
+  landingRating,
+  landingColours,
+  picking,
+  onPickLanding,
+  settings,
+  onSettings,
+  onCancelPick,
+  onUseSelected,
   plan,
+  walks,
+  onSelectWalk,
   status,
   onPlan,
   canStand,
   onStand,
-  onPickStart,
 }: {
-  goals: readonly ScienceGoal[]
-  start: WalkStart | null
+  /** The step on show; the shell keeps it to one that can be opened (`shownStep`). */
+  step: WalkStep
+  onStep: (step: WalkStep) => void
+  landing: MarsCoordinate | null
+  /** Why no walk can start from the landing site, or null. */
+  landingProblem: string | null
+  landingRating?: Classified<LandingReading>
+  /** The landing colours drawn on the map while the first step is open, for their legend. */
+  landingColours?: LandingColoursStatus
+  /** The next click on the map sets the landing site. */
+  picking: boolean
+  /** Turns the pick on; absent where the globe cannot be clicked. */
+  onPickLanding?: () => void
+  onCancelPick: () => void
+  /** Lands at the selected point; absent with no other point selected. */
+  onUseSelected?: () => void
   /** The plan in the store, from this panel or any other source. */
   plan: WalkPlan | null
+  /**
+   * The three walks, planned or not, for step 3's cards. Absent until the
+   * shell plans them: step 3 then shows the one plan in the store.
+   */
+  walks?: readonly WalkOption[]
+  /** Selects the walk of that kind in the store; needed with `walks`. */
+  onSelectWalk?: (kind: WalkKind) => void
   status: PlanStatus
-  onPlan: (goal: ScienceGoal) => void
+  settings: MissionSettings
+  onSettings: (settings: MissionSettings) => void
+  onPlan: (settings: MissionSettings) => void
   /** False where the surface view cannot be entered from here (navigation). */
   canStand: boolean
   /** Stand on the ground at the plan's first stop. */
   onStand: () => void
-  /** Picks the departure on the globe, offered while there is no start. */
-  onPickStart?: () => void
 }) {
-  // The plan's goal when it is one of these; a plan from elsewhere (the sample walk) starts at the first.
-  const [goalId, setGoalId] = useState(() =>
-    plan && goals.some((g) => g.id === plan.goal.id) ? plan.goal.id : (goals[0]?.id ?? ''),
-  )
-  const goal = goals.find((g) => g.id === goalId) ?? null
   const { minimized, toggle, bodyId } = useMinimized()
+  const legendMethod = minimisedLegendMethod(minimized, step, landingColours)
   const planning = status.kind === 'planning'
-  const blocked =
-    start === null ? 'Pick a departure on the globe, set one in the search bar, or a point from the right-click menu.' : null
+  const progress = { landingReady: landing !== null && landingProblem === null, hasPlan: plan !== null }
+  // A step change unmounts the button that asked for it (Next, Plan), so
+  // focus goes to the new step's own button rather than back to the page.
+  const currentStep = useRef<HTMLButtonElement>(null)
+  const stepShown = useRef(step)
+  useEffect(() => {
+    if (stepShown.current === step) return
+    stepShown.current = step
+    currentStep.current?.focus()
+  }, [step])
 
   // No ×: the dock's button closes a tool's panel.
   return (
@@ -59,62 +114,74 @@ export function GoalPickerView({
       <PanelHeader title="Plan a walk" minimized={minimized} onToggleMinimized={toggle} bodyId={bodyId} spacing="mb-3">
         <h2 className="text-heading font-semibold text-ink">Plan a walk</h2>
       </PanelHeader>
+      {/* The colours stay on the map while the panel is minimised, so what they are stays on show too. */}
+      {legendMethod !== null && <LandingLegendLine method={legendMethod} />}
       {minimized ? null : (
         <div id={bodyId} className="flex flex-col gap-3">
-          <fieldset className="flex flex-col gap-1">
-            <legend className="mb-1 text-caption text-ink-subtle">Science goal</legend>
-            {goals.map((g) => (
-              <label key={g.id} className="flex items-center gap-2 text-body text-ink">
-                <input
-                  type="radio"
-                  name="walk-goal"
-                  value={g.id}
-                  checked={g.id === goalId}
-                  onChange={() => setGoalId(g.id)}
-                />
-                <span>{g.label}</span>
-                <ClassificationBadge classification={g.reason.classification} detail={detailOf(g)} />
-              </label>
-            ))}
-          </fieldset>
-          <p className="text-caption text-ink-muted">
-            {start ? (
-              <>
-                Starts at your {start.from}:{' '}
-                <span className="tabular-nums text-ink">{formatMarsCoordinate(start.coordinate, 3)}</span>
-              </>
-            ) : (
-              blocked
-            )}
-          </p>
-          {start === null && onPickStart && (
-            <button
-              type="button"
-              onClick={onPickStart}
-              className="self-start rounded-control bg-accent/15 px-3 py-1 text-body text-accent transition-colors duration-(--duration-fast) hover:bg-accent/25"
-            >
-              Pick the departure on the globe
-            </button>
+          <nav aria-label="Steps of planning a walk">
+            <ol className="flex gap-1">
+              {WALK_STEPS.map((s, i) => (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    disabled={!stepOpen(s.id, progress)}
+                    ref={s.id === step ? currentStep : undefined}
+                    aria-current={s.id === step ? 'step' : undefined}
+                    onClick={() => onStep(s.id)}
+                    className={`rounded-control px-2 py-1 whitespace-nowrap text-caption transition-colors duration-(--duration-fast) disabled:cursor-not-allowed disabled:text-ink-subtle/60 ${
+                      s.id === step ? 'bg-accent/15 text-accent' : 'text-ink-muted hover:bg-surface-raised hover:text-ink'
+                    }`}
+                  >
+                    {i + 1}. {s.label}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </nav>
+          {step === 'landing' && (
+            <LandingStep
+              landing={landing}
+              problem={landingProblem}
+              rating={landingRating}
+              colours={landingColours}
+              picking={picking}
+              onPick={onPickLanding}
+              onCancelPick={onCancelPick}
+              onUseSelected={onUseSelected}
+              onNext={() => onStep('settings')}
+            />
           )}
-          <button
-            type="button"
-            disabled={goal === null || start === null || planning}
-            onClick={() => goal && onPlan(goal)}
-            className="self-start rounded-control border border-line px-3 py-1 text-body text-ink transition-colors duration-(--duration-fast) hover:bg-surface-raised disabled:cursor-not-allowed disabled:text-ink-subtle/60"
-          >
-            {planning ? 'Planning…' : 'Plan'}
-          </button>
-          {/* Mounted before it has words, so a screen reader announces them. */}
+          {step === 'settings' && (
+            <>
+              <p className="text-caption text-ink-muted">
+                Lands at{' '}
+                <span className="tabular-nums text-ink">{landing ? formatMarsCoordinate(landing, 3) : 'no landing site'}</span>
+              </p>
+              <MissionSettingsStep settings={settings} onChange={onSettings} />
+              <button
+                type="button"
+                disabled={!progress.landingReady || planning || !settingsValid(settings)}
+                onClick={() => onPlan(settings)}
+                className="w-full rounded-control border border-accent/50 bg-accent/15 px-3 py-2 text-body font-medium text-accent transition-colors duration-(--duration-fast) hover:border-accent/80 hover:bg-accent/25 disabled:cursor-not-allowed disabled:border-line disabled:bg-transparent disabled:font-normal disabled:text-ink-subtle/60"
+              >
+                {planning ? 'Planning…' : 'Plan walks'}
+              </button>
+            </>
+          )}
+          {/* Mounted on every step and before it has words, so a screen reader announces them. */}
           <p role="status" className={planning ? 'text-caption text-ink-muted' : 'sr-only'}>
-            {planning && 'Reading the map and the elevation models. Where the 1 m model answers, this can take about 20 s.'}
+            {planning && 'Planning three walks: reading the map, the rover’s path and the elevation models. This can take about half a minute.'}
           </p>
           {status.kind === 'failed' && (
             <p role="alert" className="text-caption text-danger">
               Could not plan: {status.reason}
-              {plan && <span className="block">The plan below is the previous one.</span>}
+              {plan && <span className="block">The plan under Walks is the previous one.</span>}
             </p>
           )}
-          {plan && <PlanSummary plan={plan} canStand={canStand} onStand={onStand} />}
+          {step === 'walks' && walks && walks.length > 0 && onSelectWalk && (
+            <WalkCards walks={walks} selectedKind={plan?.kind ?? null} onSelect={onSelectWalk} />
+          )}
+          {step === 'walks' && plan && <PlanSummary plan={plan} canStand={canStand} onStand={onStand} />}
         </div>
       )}
     </Panel>
@@ -124,7 +191,7 @@ export function GoalPickerView({
 /** The plan in the store: its goal, each stop with the leg that reaches it, and the way onto the ground. */
 function PlanSummary({ plan, canStand, onStand }: { plan: WalkPlan; canStand: boolean; onStand: () => void }) {
   return (
-    <section aria-label="Planned walk" className="flex flex-col gap-1.5 border-t border-line/60 pt-3">
+    <section aria-label="Planned walk" className="flex flex-col gap-1.5">
       <p className="flex items-center gap-1.5 text-caption text-ink-subtle">
         <span>
           {/* The start is not a numbered stop: "the start and 3 stops" for Start, Stop 1–3. */}
@@ -141,7 +208,10 @@ function PlanSummary({ plan, canStand, onStand }: { plan: WalkPlan; canStand: bo
         <span>
           Slope limit {plan.slopeLimit.deg}°: {plan.slopeLimit.label}
         </span>
-        <ClassificationBadge classification="OFFICIAL" detail={plan.slopeLimit.source} />
+        {/* Cited only at the suited figure; another value is the settings' own. */}
+        {isCitedSlopeLimit(plan.slopeLimit) && (
+          <ClassificationBadge classification="OFFICIAL" detail={plan.slopeLimit.source} />
+        )}
       </p>
       <p className="text-caption text-ink-muted">
         Slopes are measured over a few metres to 100 m or more, depending on the elevation model and the leg&rsquo;s length, so a flag means look here, not impassable.

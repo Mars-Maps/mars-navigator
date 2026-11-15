@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
-import type { MarsCoordinate, ScienceGoal } from '../domain'
+import { unavailable, type MarsCoordinate, type MissionSettings } from '../domain'
 import { GoalPickerView, type PlanStatus } from '../features/mission-ui/walk/GoalPicker'
-import { walkStart } from '../features/mission-ui/walk/walkStart'
-import { canTransition, useMissionStore, useRoutePick, useWalkPlan } from '../state'
+import { DEFAULT_MISSION_SETTINGS } from '../features/mission-ui/walk/missionSettings'
+import { planIndexOfKind, walksOfPlans } from '../features/mission-ui/walk/walkCardFigures'
+import { firstStep, shownStep } from '../features/mission-ui/walk/walkSteps'
+import { canTransition, useLandingSite, useMissionStore, useRoutePick, useWalkPlan } from '../state'
 import { geologicFeatures, geologicUnitAreas, geologicUnitAt } from '../data/adapters/GeologyAdapter'
+import { loadPlaceNames } from '../data/adapters/PlaceNamesAdapter'
 import { DEFAULT_SITE } from '../data/sites/sites'
 import { profileHeights } from './elevation'
+import { useLandingRating } from './landingColours'
+import { landingRatingAt } from './landingRatingAt'
 import { holdWelcomeReturn } from './viewModeTriggers'
 import { readRoverTraverse } from './roverFeed'
-import { createWalkPlanner, planStatusAt, planWalk, standAtWalkStart, walkHeights } from './walkPlanner'
+import { noWalkReason, plannedWalks, planWalks, type WalkOutcome, type WalksPlanner } from './planWalks'
+import { sampleProfile } from './routeProfile'
+import { craterFromNames, walkDrafts } from './walkDrafts'
+import { createWalkPlanner, landingSiteProblem, planStatusAt, standAtWalkStart, walkHeights } from './walkPlanner'
 
 const WALK_PLANNER = createWalkPlanner({
   site: DEFAULT_SITE.site,
@@ -20,61 +28,131 @@ const WALK_PLANNER = createWalkPlanner({
   traverse: (signal) => readRoverTraverse('perseverance', signal),
 })
 
+const profile: WalksPlanner['profile'] = (path, signal) => sampleProfile(path, profileHeights, signal)
+
+/** The Gazetteer's name of the site's crater, for the transect's own rim. */
+const SITE_CRATER = 'Jezero'
+
+const WALKS_PLANNER: WalksPlanner = {
+  drafts: walkDrafts(WALK_PLANNER, {
+    site: DEFAULT_SITE.site,
+    units: (bounds, signal) => geologicUnitAreas(bounds, signal),
+    unitAt: (point, signal) => geologicUnitAt(point, signal),
+    traverse: (signal) => readRoverTraverse('perseverance', signal),
+    profile,
+    crater: async () => {
+      const names = await loadPlaceNames()
+      if (names.classification === 'UNAVAILABLE') return names
+      // The place names are OFFICIAL, from the Gazetteer; anything else is not a citation for a crater.
+      if (names.classification !== 'OFFICIAL') return unavailable('The place names are not the Gazetteer’s own')
+      return craterFromNames(names.value, SITE_CRATER, names.source)
+    },
+  }),
+  walkLegs: WALK_PLANNER.walkLegs,
+  profile,
+}
+
 /**
- * The Plan a walk tool with its planner: the view picks the goal;
- * the shell plans from the walk's start and puts the plan in the walk-plan
- * store. Moving the start or closing the panel cancels a plan still running,
- * so an answer for an old start never lands.
+ * The Plan a walk tool with its planner: the landing site
+ * is picked on the map, the settings are set, and the shell plans the three
+ * scientific walks from the landing site and puts those it could plan in the
+ * walk-plan store; the rest keep their reasons here, for step 3. Moving the landing
+ * site or closing the panel cancels a plan still running, so an answer for
+ * an old site never lands.
  */
 export function WalkPlannerPanel() {
-  const departure = useMissionStore((s) => s.routeDraft.departure)
-  const selected = useMissionStore((s) => s.selectedPoint)
+  const landing = useLandingSite((s) => s.landingSite)
   const plan = useWalkPlan((s) => s.plan)
+  const plans = useWalkPlan((s) => s.plans)
   const canStand = useMissionStore((s) => canTransition(s.viewMode, 'surface'))
-  // A pick needs the globe and the editable search bar, which shows its notice and takes its Escape.
+  // A pick needs the editable search bar, which shows its notice and takes its Escape: not in navigation.
   const canPick = useMissionStore((s) => s.viewMode !== 'surface' && s.viewMode !== 'navigation')
-  // Planning keeps the start it was for: a reason about one start does not apply to the next.
+  const selected = useMissionStore((s) => s.selectedPoint)
+  const picking = useRoutePick((s) => s.slot === 'landing-site')
+  // Planning keeps the landing site it was for: a reason about one site does not apply to the next.
   const [status, setStatus] = useState<{ status: PlanStatus; at: MarsCoordinate | null }>({
     status: { kind: 'idle' },
     at: null,
   })
   const running = useRef<AbortController | null>(null)
-  const start = walkStart(departure, selected)
+  // Every walk of the last run, planned or not, for step 3's cards.
+  const [outcomes, setOutcomes] = useState<readonly WalkOutcome[]>([])
+  const [settings, setSettings] = useState(DEFAULT_MISSION_SETTINGS)
 
-  const startAt = start?.coordinate ?? null
-  useEffect(() => () => running.current?.abort(), [startAt])
-  const shown = planStatusAt(status, startAt)
+  const landingProblem = landing ? landingSiteProblem(landing, DEFAULT_SITE.site) : null
+  const progress = { landingReady: landing !== null && landingProblem === null, hasPlan: plan !== null }
+  const [wanted, setWanted] = useState(() => firstStep(progress))
+  const step = shownStep(wanted, progress)
 
-  const onPlan = (goal: ScienceGoal) => {
-    if (!start) return
+  // The landing colours are on the map for as long as the first step is open.
+  const rating = useLandingRating(step === 'landing')
+
+  // While the landing step is open, every click on the map sets the site, so
+  // a second click moves it. Escape ends the pick; the step's button starts
+  // it again. Another pick (a route field), running already or started
+  // meanwhile, is left alone.
+  useEffect(() => {
+    if (step !== 'landing' || !canPick) return
+    if (useRoutePick.getState().slot === null) useRoutePick.getState().startRoutePick('landing-site')
+    return () => {
+      if (useRoutePick.getState().slot === 'landing-site') useRoutePick.getState().cancelRoutePick()
+    }
+  }, [step, canPick])
+
+  useEffect(() => () => running.current?.abort(), [landing])
+  const shown = planStatusAt(status, landing)
+
+  const onPlan = (wanted: MissionSettings) => {
+    if (!landing) return
     running.current?.abort()
     const controller = new AbortController()
     running.current = controller
-    const at = start.coordinate
+    const at = landing
     setStatus({ status: { kind: 'planning' }, at })
+    setOutcomes([]) // a run's outcomes belong to its landing site and settings
     // Waiting on the planner is not idle: no welcome screen over it.
     const release = holdWelcomeReturn()
-    void planWalk(WALK_PLANNER, goal, start.coordinate, controller.signal)
+    void planWalks(WALKS_PLANNER, at, wanted, controller.signal)
       .then((result) => {
         if (running.current !== controller) return // a newer plan owns the status
-        if (result.status === 'aborted' || controller.signal.aborted) return setStatus({ status: { kind: 'idle' }, at: null })
-        if (result.status === 'failed') return setStatus({ status: { kind: 'failed', reason: result.reason }, at })
-        const refused = useWalkPlan.getState().setWalkPlan(result.plan)
+        if (result === 'aborted' || controller.signal.aborted) return setStatus({ status: { kind: 'idle' }, at: null })
+        const planned = plannedWalks(result)
+        if (planned.length === 0) return setStatus({ status: { kind: 'failed', reason: noWalkReason(result) }, at })
+        const refused = useWalkPlan.getState().setWalkPlans(planned.map((w) => w.plan))
         setStatus({ status: refused ? { kind: 'failed', reason: refused } : { kind: 'idle' }, at })
+        if (refused) return
+        setOutcomes(result)
+        setWanted('walks')
       })
       .finally(release)
   }
 
   return (
     <GoalPickerView
-      goals={WALK_PLANNER.goals}
-      start={start}
+      step={step}
+      onStep={setWanted}
+      landing={landing}
+      landingProblem={landingProblem}
+      picking={picking}
+      landingRating={landing ? landingRatingAt(rating, landing) : undefined}
+      landingColours={rating.status === 'ready' ? { status: 'ready', method: rating.method } : rating}
+      onPickLanding={canPick ? () => useRoutePick.getState().startRoutePick('landing-site') : undefined}
+      settings={settings}
+      onSettings={setSettings}
+      onCancelPick={() => useRoutePick.getState().cancelRoutePick()}
+      onUseSelected={
+        canPick && selected && selected !== landing ? () => useLandingSite.getState().setLandingSite(selected) : undefined
+      }
       plan={plan}
       status={shown}
       onPlan={onPlan}
+      walks={walksOfPlans(outcomes, plans)}
+      onSelectWalk={(kind) => {
+        const index = planIndexOfKind(plans, kind)
+        if (index !== null) useWalkPlan.getState().selectWalk(index)
+      }}
       canStand={canStand}
       onStand={standAtWalkStart}
-      onPickStart={canPick ? () => useRoutePick.getState().startRoutePick('departure') : undefined}
     />
   )
 }

@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { MARS_MEAN_RADIUS_KM, simulated, unavailable, type MarsCoordinate } from '../../src/domain'
 import { buildGroundPatch, GROUND_GRID } from '../../src/features/mars-3d/surfaceView/groundPatch'
 import { sampleHeight } from '../../src/features/mars-3d/surfaceView/heightfield'
-import { boxTiles, composePatch, equirectPieces, pickZoom } from '../../src/features/mars-3d/surfaceView/patchImage'
+import {
+  boxTiles,
+  composePatch,
+  drawPatchImage,
+  equirectPieces,
+  pickZoom,
+} from '../../src/features/mars-3d/surfaceView/patchImage'
+import type { SurfaceElevation } from '../../src/features/mars-3d/surfaceElevation'
 import {
   simulatedElevation,
   SIMULATED_ELEVATION_SOURCE,
@@ -243,40 +250,134 @@ describe('ground heightfield sampling', () => {
 })
 
 describe('buildGroundPatch', () => {
-  const sources = (sample: () => Promise<ReturnType<typeof unavailable<Float32Array>>>) => ({
+  type Heights = Awaited<ReturnType<SurfaceElevation['sample']>>
+  const sources = (sample: (points: Float64Array, signal: AbortSignal) => Promise<Heights>) => ({
     elevation: { sample },
     detail: null,
     groundImagery: [],
     globeImage: null,
     maxAnisotropy: 1,
   })
+  const CENTRE = { latitude: 0, longitudeEast: 0 }
+  // Test fixture only: flat simulated heights, never shown in the app.
+  const FLAT = () => simulated(new Float32Array(GROUND_GRID * GROUND_GRID), 'test')
 
-  it('builds nothing and passes the reason on when heights are UNAVAILABLE', async () => {
-    const r = await buildGroundPatch(
-      { latitude: 0, longitudeEast: 0 },
-      sources(async () => unavailable('No DEM coverage here')),
-      new AbortController().signal,
-    )
+  /** A stand-in for drawPatchImage (node has no canvas): records the tile signal and when it was called. */
+  function fakeDraw(log: string[] = []) {
+    const calls: { signal: AbortSignal }[] = []
+    const draw = ((...args: Parameters<typeof drawPatchImage>) => {
+      log.push('draw')
+      calls.push({ signal: args[5] })
+      return { canvas: {} as HTMLCanvasElement, ground: [] }
+    }) as typeof drawPatchImage
+    return { draw, calls }
+  }
+
+  it('builds nothing and passes the reason on when heights are UNAVAILABLE, and stops the tiles', async () => {
+    const { draw, calls } = fakeDraw()
+    const r = await buildGroundPatch(CENTRE, sources(async () => unavailable('No DEM coverage here')), new AbortController().signal, draw)
     expect(r).toEqual({ status: 'unavailable', reason: 'No DEM coverage here' })
+    expect(calls[0].signal.aborted).toBe(true)
   })
 
-  it('refuses a height list of the wrong length', async () => {
-    const r = await buildGroundPatch(
-      { latitude: 0, longitudeEast: 0 },
-      sources(async () => simulated(new Float32Array(3), 'test')),
-      new AbortController().signal,
-    )
+  it('refuses a height list of the wrong length, and stops the tiles', async () => {
+    const { draw, calls } = fakeDraw()
+    const r = await buildGroundPatch(CENTRE, sources(async () => simulated(new Float32Array(3), 'test')), new AbortController().signal, draw)
     expect(r.status).toBe('unavailable')
+    expect(calls[0].signal.aborted).toBe(true)
   })
 
-  it('reports an abort instead of building', async () => {
+  it('reports an abort instead of building, and draws nothing for a build aborted before it starts', async () => {
     const controller = new AbortController()
     controller.abort()
+    const { draw, calls } = fakeDraw()
+    let read = false
     const r = await buildGroundPatch(
-      { latitude: 0, longitudeEast: 0 },
-      sources(async () => simulated(new Float32Array(GROUND_GRID * GROUND_GRID), 'test')),
+      CENTRE,
+      sources(async () => {
+        read = true
+        return FLAT()
+      }),
       controller.signal,
+      draw,
     )
     expect(r.status).toBe('aborted')
+    expect(calls).toHaveLength(0)
+    expect(read).toBe(false)
+  })
+
+  describe('a retry reads the heights before any tile', () => {
+    it('draws only once the heights are in', async () => {
+      const log: string[] = []
+      const { draw } = fakeDraw(log)
+      const r = await buildGroundPatch(
+        CENTRE,
+        sources(async () => {
+          log.push('heights read')
+          return FLAT()
+        }),
+        new AbortController().signal,
+        draw,
+        false,
+      )
+      expect(log).toEqual(['heights read', 'draw'])
+      expect(r.status).toBe('ready')
+    })
+
+    it('starts no tile load at all when the heights fail again', async () => {
+      const { draw, calls } = fakeDraw()
+      const r = await buildGroundPatch(CENTRE, sources(async () => unavailable('No DEM coverage here')), new AbortController().signal, draw, false)
+      expect(r).toEqual({ status: 'unavailable', reason: 'No DEM coverage here' })
+      expect(calls).toHaveLength(0)
+    })
+  })
+
+  describe('the imagery loads together with the heights', () => {
+    it('starts the tiles before the heights have come back', async () => {
+      const log: string[] = []
+      const { draw } = fakeDraw(log)
+      const r = await buildGroundPatch(
+        CENTRE,
+        sources(async () => {
+          log.push('heights read')
+          return FLAT()
+        }),
+        new AbortController().signal,
+        draw,
+      )
+      expect(log).toEqual(['draw', 'heights read'])
+      expect(r.status).toBe('ready')
+    })
+
+    it('an abort while the heights are read stops the tiles at once, not when the read ends', async () => {
+      const controller = new AbortController()
+      const { draw, calls } = fakeDraw()
+      let finish: (h: Heights) => void = () => {}
+      const pending = buildGroundPatch(CENTRE, sources(() => new Promise<Heights>((resolve) => (finish = resolve))), controller.signal, draw)
+      expect(calls[0].signal.aborted).toBe(false)
+      controller.abort()
+      expect(calls[0].signal.aborted).toBe(true)
+      finish(FLAT())
+      expect((await pending).status).toBe('aborted')
+    })
+
+    it('a height read that throws stops the tiles and passes the error on', async () => {
+      const { draw, calls } = fakeDraw()
+      await expect(
+        buildGroundPatch(CENTRE, sources(() => Promise.reject(new Error('fixture failure'))), new AbortController().signal, draw),
+      ).rejects.toThrow('fixture failure')
+      expect(calls[0].signal.aborted).toBe(true)
+    })
+
+    it('a built patch owns its tiles: a later abort of the build leaves them, its dispose stops them', async () => {
+      const controller = new AbortController()
+      const { draw, calls } = fakeDraw()
+      const r = await buildGroundPatch(CENTRE, sources(async () => FLAT()), controller.signal, draw)
+      expect(r.status).toBe('ready')
+      controller.abort()
+      expect(calls[0].signal.aborted).toBe(false)
+      if (r.status === 'ready') r.patch.dispose()
+      expect(calls[0].signal.aborted).toBe(true)
+    })
   })
 })

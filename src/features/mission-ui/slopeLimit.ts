@@ -1,4 +1,4 @@
-import { isAvailable, unavailable, type Classified, type Hazard, type SlopeLimit } from '../../domain'
+import { SUITED_SLOPE_LIMIT, isAvailable, unavailable, type Classified, type Hazard, type SlopeLimit } from '../../domain'
 import { describeSlope } from '../route-analysis/profileSlope'
 
 /**
@@ -6,6 +6,15 @@ import { describeSlope } from '../route-analysis/profileSlope'
  * the UI applies it, in the HUD and on the stop card: one
  * rule, so a slope flagged in one place is flagged in the other.
  */
+
+/**
+ * Whether the limit is the cited suited figure, so its mark
+ * reads OFFICIAL. A limit set with the mission settings' slider is the
+ * user's own and has no OFFICIAL mark, even at the same number.
+ */
+export function isCitedSlopeLimit(limit: SlopeLimit): boolean {
+  return limit.deg === SUITED_SLOPE_LIMIT.deg && limit.source === SUITED_SLOPE_LIMIT.source
+}
 
 /** The slope as shown: UNAVAILABLE rather than a figure that is not a slope. */
 export function shownSlope(slope: Classified<number>): Classified<number> {

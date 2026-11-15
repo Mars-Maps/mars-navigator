@@ -64,24 +64,65 @@ export interface GroundSources {
 }
 
 /**
- * Builds the patch centred on `centre`. Heights first: if the source has
- * none, nothing is built and the reason is returned. Imagery keeps filling
- * in after the patch is returned.
+ * Builds the patch centred on `centre`. The imagery's tiles start loading
+ * together with the heights: the box they cover needs only the grid's
+ * points, so the ground appears already sharp instead of the pictures
+ * waiting for the heights. If the heights are UNAVAILABLE, the build is
+ * aborted or the read fails, nothing is built, the tile loads are aborted,
+ * and the reason is returned. Imagery keeps filling in after the patch is
+ * returned. `draw` is the image builder; tests pass their own, since it
+ * needs a canvas.
+ *
+ * With `imagesFirst` false the tiles wait for the heights, as before the range mirrors:
+ * the shell asks that for a retry after a build whose heights failed, so a
+ * patch edge retried every few seconds does not start and abort a full set
+ * of tile loads each time. A build aborted before it starts
+ * draws nothing.
  */
 export async function buildGroundPatch(
   centre: MarsCoordinate,
   sources: GroundSources,
   signal: AbortSignal,
+  draw: typeof drawPatchImage = drawPatchImage,
+  imagesFirst = true,
 ): Promise<GroundPatchResult> {
+  if (signal.aborted) return { status: 'aborted' }
   const frame = makeFrame(centre)
   const points = patchGrid(frame, GROUND_GRID)
-  const heights = await sources.elevation.sample(points, signal)
-  if (signal.aborted) return { status: 'aborted' }
+  const box = patchBox(frame, points)
+  const lon0 = centre.longitudeEast
+
+  // The tile loads belong to the patch once it is built (its dispose aborts
+  // them); until then an abort of the build stops them too.
+  const tiles = new AbortController()
+  const stopTiles = () => tiles.abort()
+  signal.addEventListener('abort', stopTiles, { once: true })
+  let texture: CanvasTexture | null = null
+  const startImage = () =>
+    draw(box, lon0, sources.globeImage, sources.detail, sources.groundImagery, tiles.signal, () => {
+      if (texture) texture.needsUpdate = true
+    })
+  let image = imagesFirst ? startImage() : null
+  const fail = (result: Exclude<GroundPatchResult, { status: 'ready' }>): GroundPatchResult => {
+    tiles.abort()
+    return result
+  }
+
+  let heights: Awaited<ReturnType<SurfaceElevation['sample']>>
+  try {
+    heights = await sources.elevation.sample(points, signal)
+  } catch (e) {
+    tiles.abort()
+    throw e
+  } finally {
+    signal.removeEventListener('abort', stopTiles)
+  }
+  if (signal.aborted) return fail({ status: 'aborted' })
   if (heights.classification === 'UNAVAILABLE') {
-    return { status: 'unavailable', reason: heights.reason }
+    return fail({ status: 'unavailable', reason: heights.reason })
   }
   if (heights.value.length !== GROUND_GRID * GROUND_GRID) {
-    return { status: 'unavailable', reason: 'The elevation source returned the wrong number of heights' }
+    return fail({ status: 'unavailable', reason: 'The elevation source returned the wrong number of heights' })
   }
 
   const sizeM = PATCH_SIZE_KM * 1000
@@ -91,8 +132,6 @@ export async function buildGroundPatch(
   for (let i = 0; i < position.count; i++) position.setZ(i, heights.value[i])
 
   // Texture coordinates into an equirectangular image of the patch's box.
-  const box = patchBox(frame, points)
-  const lon0 = centre.longitudeEast
   const uv = new Float32Array(position.count * 2)
   for (let i = 0; i < position.count; i++) {
     const p = boxUv(box, lon0, points[i * 2], points[i * 2 + 1])
@@ -104,19 +143,10 @@ export async function buildGroundPatch(
   geometry.rotateX(-Math.PI / 2)
   geometry.computeVertexNormals()
 
-  const tiles = new AbortController()
-  let texture: CanvasTexture | null = null
-  const { canvas, ground } = drawPatchImage(
-    box,
-    lon0,
-    sources.globeImage,
-    sources.detail,
-    sources.groundImagery,
-    tiles.signal,
-    () => {
-      if (texture) texture.needsUpdate = true
-    },
-  )
+  // The canvas already holds the tiles that landed while the heights were
+  // read; a new CanvasTexture uploads it as it is now. A retry starts them here.
+  image ??= startImage()
+  const { canvas, ground } = image
   texture = new CanvasTexture(canvas)
   texture.colorSpace = SRGBColorSpace
   texture.anisotropy = sources.maxAnisotropy

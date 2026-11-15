@@ -7,6 +7,7 @@ import {
   type ElevationAdapterOptions,
   type ElevationIo,
 } from '../../src/data/adapters/ElevationAdapter'
+import { ASC_PDS_S3 } from '../../src/data/adapters/rangeMirrors'
 import { bilinearCells, nearestCell, toLongitude180 } from '../../src/data/elevation/demGrid'
 import { DEM_SOURCES, ELEVATION_SOURCE, type DemSource } from '../../src/data/elevation/demSources'
 import { layoutMismatch, readTiffLayout, type ByteReader } from '../../src/data/elevation/tiffLayout'
@@ -491,6 +492,38 @@ describe('DemElevationAdapter.sampleGrid', () => {
     const adapter = rowAdapter(source, io, { chunkPx: 2, concurrency: 1 })
     const points = new Float64Array([22.5, 360 - 112.5, 0, 360 - 22.5])
     expect(await adapter.sampleGrid(points, controller.signal)).toEqual({ classification: 'UNAVAILABLE', reason: 'Cancelled' })
+  })
+
+  it('keeps six reads in flight per address: thirty for a file in the USGS bucket, six for any other', async () => {
+    const maxInFlight = async (url: string) => {
+      // 16 rows is as tall as the fixture's layout allows (its strip tables end at the data).
+      const { file, source } = tinyDem(64, 16, (r, c) => r + c)
+      let inFlight = 0
+      let max = 0
+      let reads = 0
+      const io: ElevationIo = {
+        fetchRange: async (u, start, length, s) => {
+          // The layout check reads one at a time; count the data reads.
+          const data = ++reads > LAYOUT_READS
+          if (data) max = Math.max(max, ++inFlight)
+          await new Promise((resolve) => setTimeout(resolve, 0))
+          if (data) inFlight--
+          return file.io().fetchRange(u, start, length, s)
+        },
+      }
+      const adapter = rowAdapter({ ...source, url }, io, { chunkPx: 1 })
+      // Points 8 columns apart on every row: their chunks are not consecutive,
+      // so each is its own read, far more than thirty in one load.
+      const points: number[] = []
+      for (let r = 0; r < 16; r++) {
+        for (let c = 0; c < 64; c += 8) points.push(90 - (r + 0.5) * (180 / 16), (c + 0.5) * (360 / 64))
+      }
+      const got = await adapter.sampleGrid(new Float64Array(points), signal())
+      expect(got.classification === 'UNAVAILABLE' ? got.reason : 'read').toBe('read')
+      return max
+    }
+    expect(await maxInFlight(`${ASC_PDS_S3}fixture/tiny.tif`)).toBe(30)
+    expect(await maxInFlight('https://example.org/tiny.tif')).toBe(6)
   })
 
   it('is UNAVAILABLE, not a rejection, when one call needs more chunks than the cache holds', async () => {

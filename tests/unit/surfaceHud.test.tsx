@@ -9,6 +9,7 @@ import {
   type MarsCoordinate,
   type MarsSolarTime,
   type SlopeLimit,
+  SUITED_SLOPE_LIMIT,
 } from '../../src/domain'
 import { PlannedSurfaceHud, SurfaceHud } from '../../src/features/mission-ui/hud/SurfaceHud'
 import type { HudStop } from '../../src/features/mission-ui/hud/hudMath'
@@ -18,7 +19,8 @@ const METHOD = 'fixture-method'
 /** Facing east: north is 90° to the left, so the compass heading is 270°. */
 const FACING_EAST = derived(270, METHOD)
 const HERE = derived<MarsCoordinate>({ latitude: 0, longitudeEast: 10 }, 'fixture-position')
-const LIMIT: SlopeLimit = { deg: 20, label: 'fixture-limit-label', source: 'fixture-citation' }
+// The cited suited limit: only it carries an OFFICIAL mark with its citation.
+const LIMIT: SlopeLimit = SUITED_SLOPE_LIMIT
 const SUN = derived(34.4, 'fixture-sky')
 /** 12:00 at 0°E with no equation of time, so 12:40 at 10°E. */
 const SOLAR = derived<MarsSolarTime>(
@@ -143,7 +145,7 @@ describe('SurfaceHud', () => {
     expect(button(html, 'Previous stop')).toContain('aria-disabled="false"')
   })
 
-  it('stays on a reached stop and waits for Next, never moving on by itself (the walker walks on every change)', () => {
+  it('stays on a reached stop and waits for Next, never moving on by itself', () => {
     let wrote: number | null = null
     const html = renderToStaticMarkup(
       <SurfaceHud
@@ -214,8 +216,8 @@ describe('SurfaceHud', () => {
     const html = render({ stops: [EAST('Stop 1', derived(23.4, 'fixture-slope'))] })
     expect(html).toContain('23.4° steep')
     expect(html).toContain('data-over-limit')
-    expect(html).toContain('Over the 20° limit: fixture-limit-label')
-    expect(html).toContain('fixture-citation')
+    expect(html).toContain(`Over the 20° limit: ${SUITED_SLOPE_LIMIT.label}`)
+    expect(html).toContain('NASA EVA-EXP-0075')
     expect(html).toContain('OFFICIAL')
   })
 
@@ -241,7 +243,7 @@ describe('SurfaceHud', () => {
     const html = render({ stops: [stop('Stop 1', 0, 10.2, unavailable('fixture-part-not-checked'), leg)] })
     expect(html).toContain('fixture-part-not-checked')
     expect(html).toContain('data-over-limit')
-    expect(html).toContain('Over the 20° limit: fixture-limit-label')
+    expect(html).toContain(`Over the 20° limit: ${SUITED_SLOPE_LIMIT.label}`)
   })
 
   it('does not flag a part-checked leg whose only stretch has no figure', () => {
@@ -348,7 +350,7 @@ describe('SurfaceHud radiation glyph', () => {
     const html = render({ stops: [NORTH('Stop 1'), withLeg('Stop 2', derived([SLOPE, RADIATION], 'fixture-scan'))], activeStopIndex: 1 })
     expect(html.match(/data-radiation-warning/g)).toHaveLength(1)
     expect(html).toContain('aria-label="Radiation HIGH on the next leg: ')
-    // The rule: about shielding, never a dose.
+    // The shielding rule: about shielding, never a dose.
     expect(html).not.toMatch(/higher dose|mSv/i)
   })
 

@@ -2,17 +2,17 @@ import { describe, expect, it } from 'vitest'
 import {
   boxAround,
   createWalkPlanner,
+  landingSiteProblem,
   planStatusAt,
-  planWalk,
   standAtWalkStart,
   walkHeights,
-  type WalkPlanner,
   type WalkPlannerSources,
 } from '../../src/app/walkPlanner'
 import type { SourcedHeights } from '../../src/data/adapters/LayeredElevation'
 import { SAMPLE_WALK_PLAN } from '../../src/data/mock/sampleWalkPlan'
 import {
   isAvailable,
+  SUITED_SLOPE_LIMIT,
   MARS_MEAN_RADIUS_KM,
   official,
   unavailable,
@@ -26,7 +26,6 @@ import {
   type SiteBounds,
 } from '../../src/domain'
 import { SCIENCE_GOALS } from '../../src/features/route-analysis/scienceGoals'
-import { walkStart } from '../../src/features/mission-ui/walk/walkStart'
 import { useMissionStore, useWalkPlan } from '../../src/state'
 
 // Test fixtures only: an invented map, polygons and flat heights near Jezero.
@@ -85,8 +84,14 @@ function sources(over: Partial<WalkPlannerSources> = {}): WalkPlannerSources {
     ...over,
   }
 }
-const plan = (over: Partial<WalkPlannerSources> = {}, start = JEZERO) =>
-  planWalk(createWalkPlanner(sources(over)), GOAL, start, signal())
+/** The goal's stops then the legs over them, as a plan or the reason there is none. */
+async function plan(over: Partial<WalkPlannerSources> = {}, start = JEZERO) {
+  const planner = createWalkPlanner(sources(over))
+  const stops = await planner.candidateStops(GOAL, start, signal())
+  if (stops.classification === 'UNAVAILABLE') return { status: 'failed' as const, reason: stops.reason }
+  const legs = await planner.walkLegs(stops.value, signal())
+  return { status: 'planned' as const, plan: { goal: GOAL, stops: stops.value, legs, slopeLimit: SUITED_SLOPE_LIMIT } }
+}
 
 describe('the walk planner', () => {
   it('offers the reviewed science goals', () => {
@@ -252,56 +257,12 @@ describe('the walk planner', () => {
   })
 })
 
-describe('planWalk', () => {
-  const working = createWalkPlanner(sources())
-
-  it('says why when the planner throws, and returns no half plan', async () => {
-    const broken: WalkPlanner = {
-      ...working,
-      walkLegs: async () => {
-        throw new Error('fixture failure')
-      },
-    }
-    expect(await planWalk(broken, GOAL, JEZERO, signal())).toEqual({
-      status: 'failed',
-      reason: 'The planner failed: fixture failure',
-    })
-  })
-
-  it('refuses a plan that breaks the contract, with the contract’s reason', async () => {
-    const noLegs: WalkPlanner = { ...working, walkLegs: async () => [] }
-    expect(await planWalk(noLegs, GOAL, JEZERO, signal())).toEqual({ status: 'failed', reason: '2 stops need 1 legs, not 0' })
-  })
-
-  it('comes back aborted once cancelled, whatever the planner did', async () => {
-    const c = new AbortController()
-    c.abort()
-    expect(await planWalk(working, GOAL, JEZERO, c.signal)).toEqual({ status: 'aborted' })
-  })
-
-  it('comes back aborted when cancelled during the legs, with no plan', async () => {
-    const c = new AbortController()
-    const midLegs = createWalkPlanner(
-      sources({
-        features: async () => {
-          c.abort()
-          return unavailable('Cancelled')
-        },
-      }),
-    )
-    expect(await planWalk(midLegs, GOAL, JEZERO, c.signal)).toEqual({ status: 'aborted' })
-  })
-
-  it('reads a source’s "Cancelled" as aborted, not as a reason it could not plan', async () => {
-    const c = new AbortController()
-    const cancelled: WalkPlanner = {
-      ...working,
-      candidateStops: async () => {
-        c.abort()
-        return unavailable('Cancelled')
-      },
-    }
-    expect(await planWalk(cancelled, GOAL, JEZERO, c.signal)).toEqual({ status: 'aborted' })
+describe('landingSiteProblem', () => {
+  it('lets a site on the sheet through and names the sheet and the site for one off it', () => {
+    expect(landingSiteProblem(JEZERO, SITE)).toBeNull()
+    const off = landingSiteProblem({ latitude: -4.6, longitudeEast: 137.4 }, SITE)
+    expect(off).toContain('This landing site is outside the SIM 3464 map sheet')
+    expect(off).toContain('Fixture crater')
   })
 })
 
@@ -351,16 +312,6 @@ describe('walkHeights', () => {
     expect(await walkHeights(async () => unavailable('fixture: no model'))(new Float64Array(4), signal())).toEqual(
       unavailable('fixture: no model'),
     )
-  })
-})
-
-describe('walkStart', () => {
-  const A: MarsCoordinate = { latitude: 1, longitudeEast: 2 }
-  const B: MarsCoordinate = { latitude: 3, longitudeEast: 4 }
-  it('takes the departure first, then the selected point, else none', () => {
-    expect(walkStart(A, B)).toEqual({ coordinate: A, from: 'departure' })
-    expect(walkStart(null, B)).toEqual({ coordinate: B, from: 'selected point' })
-    expect(walkStart(null, null)).toBeNull()
   })
 })
 

@@ -21,7 +21,7 @@ import { useEscapeLayer } from '../../lib/useEscapeLayer'
  * Open, it adds the UTC date and time pickers, a sun slider that scrubs the
  * current sol, the Mars readouts, Pause / Run and Set now.
  *
- * Every control writes the one mission instant (#7), and the clock runs on
+ * Every control writes the one mission instant, and the clock runs on
  * from whatever is set: the pickers and the readouts follow it once
  * a second. Everything Martian shown here is calculated from it and
  * labelled DERIVED with the Mars24 method, which is an analytic

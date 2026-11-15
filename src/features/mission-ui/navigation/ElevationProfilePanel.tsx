@@ -18,6 +18,7 @@ import {
   splitByBand,
   stepIndex,
 } from './profileChart'
+import { SAMPLING_REASON } from './profileReasons'
 
 /**
  * Elevation along the active route; `null` means no route is planned. The
@@ -93,7 +94,7 @@ export function ElevationProfileBody({
 
 /**
  * What a slope computed from two heights is: DERIVED from official or
- * derived heights, SIMULATED when either height is (a figure built on
+ * derived heights, SIMULATED when either height is (§10: a figure built on
  * invented data is invented too).
  */
 function slopeClassification(...from: DataClassification[]): DataClassification {
@@ -103,19 +104,14 @@ function slopeClassification(...from: DataClassification[]): DataClassification 
 /** The reason when a profile exists but none of its samples has an elevation. */
 export const NO_SAMPLE_ELEVATION_REASON = 'No sample along this line has elevation data'
 
-/**
- * The profile while its heights are being read: UNAVAILABLE, never a blank
- * or a flat line. The shell's `useProfile` answers with it; it lives here so
- * the frame can say "loading" rather than "unavailable" for it, since a
- * feature may not import from `src/app/`.
- */
-export const SAMPLING_REASON = 'Sampling the terrain along the path…'
+// Re-exported for the views and tests that read it from here; its own file keeps this panel out of the first load.
+export { SAMPLING_REASON }
 
 /**
  * The profile's provenance beside a panel's heading. Open, an unavailable
  * profile says so in the body. Minimised, the bar keeps the
  * UNAVAILABLE mark instead, as Hazards does, so a folded panel never hides
- * that there is no data: for a profile UNAVAILABLE as a whole, and for
+ * that there is no data (§10): for a profile UNAVAILABLE as a whole, and for
  * one whose samples are all gaps. Exported so the Terrain Profile
  * tool's bar follows the same rule, and so tests can render it folded.
  */
@@ -394,8 +390,7 @@ function SlopeLegend({ classification }: { classification: DataClassification })
 /**
  * One sample's distance and elevation. A sample without elevation
  * reads "Elevation unavailable", with its reason on hover; never a number.
- * With `previous`, the slope of the stretch that ends here and its band,
- * when both ends have a height.
+ * With `previous`, the slope of the stretch that ends here and its band, when both ends have a height.
  */
 export function SampleReadout({
   sample,

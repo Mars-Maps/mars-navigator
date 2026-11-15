@@ -1,9 +1,16 @@
 import { Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 import { SAMPLE_WALK_PLAN } from '../../src/data/mock/sampleWalkPlan'
-import { derived, unavailable, type WalkPlan } from '../../src/domain'
+import { DEFAULT_MISSION_SETTINGS, derived, unavailable, type WalkPlan } from '../../src/domain'
 import { coordinateToLocalPoint } from '../../src/features/mars-3d/projection'
-import { walkPlanGeometry } from '../../src/features/mars-3d/walkPlanGeometry'
+import {
+  GOAL_WALK_COLOUR,
+  SAMPLE_GREEN,
+  samplePointNames,
+  WALK_KIND_COLOUR,
+  walkColour,
+  walkPlanGeometry,
+} from '../../src/features/mars-3d/walkPlanGeometry'
 
 const RADIUS = 100
 const at = (array: Float32Array, i: number) => new Vector3().fromArray(array, i * 3)
@@ -75,5 +82,55 @@ describe('walkPlanGeometry', () => {
       expect(lineDistances[i + 1] - lineDistances[i]).toBeCloseTo(at(segments, i).distanceTo(at(segments, i + 1)), 3)
       if (i > 0) expect(lineDistances[i]).toBe(lineDistances[i - 1])
     }
+  })
+})
+
+describe('walkPlanGeometry: samples and colours', () => {
+  const withSamples = (samples: WalkPlan['samples']): WalkPlan => ({
+    ...SAMPLE_WALK_PLAN,
+    settings: DEFAULT_MISSION_SETTINGS,
+    samples,
+  })
+  const stop1 = SAMPLE_WALK_PLAN.stops[1]
+  const between = { latitude: 18.44, longitudeEast: 77.45 }
+
+  it('draws no sample point for a plan without samples, or no plan', () => {
+    expect(walkPlanGeometry(SAMPLE_WALK_PLAN, RADIUS).samples.length).toBe(0)
+    expect(walkPlanGeometry(null, RADIUS).samples.length).toBe(0)
+    expect(samplePointNames(null)).toEqual([])
+  })
+
+  it('puts one point per sample at its own coordinate, in walking order', () => {
+    const plan = withSamples([
+      { id: 'b', order: 2, coordinate: stop1.coordinate, dwellMin: 5 },
+      { id: 'a', order: 1, coordinate: between, dwellMin: 5 },
+    ])
+    const { samples } = walkPlanGeometry(plan, RADIUS)
+    expect(samples.length).toBe(6)
+    expect(at(samples, 0).distanceTo(point(between))).toBeCloseTo(0, 5)
+    expect(at(samples, 1).distanceTo(point(stop1.coordinate))).toBeCloseTo(0, 5)
+  })
+
+  it('names each sample: number, minutes, the unit where it is at a stop, place', () => {
+    const plan = withSamples([
+      { id: 'a', order: 1, coordinate: between, dwellMin: 5 },
+      { id: 'b', order: 2, coordinate: stop1.coordinate, dwellMin: 5 },
+    ])
+    const [first, second] = samplePointNames(plan)
+    expect(first).toMatch(/^Sample 1 of 2 · 5 min · 18\.4°N/)
+    const unit = stop1.unit.classification !== 'UNAVAILABLE' ? stop1.unit.value.name : null
+    if (unit) expect(second).toContain(`· ${unit} ·`)
+    expect(second).toMatch(/^Sample 2 of 2 · 5 min/)
+  })
+
+  it('gives each walk kind its own colour, clear of hazard red and sample green; a goal walk stays white', () => {
+    const colours = Object.values(WALK_KIND_COLOUR)
+    expect(new Set(colours).size).toBe(3)
+    for (const c of colours) {
+      expect(c).not.toBe(SAMPLE_GREEN)
+      expect(c).not.toBe(0xe5352b) // RouteHazardPoints' red
+    }
+    expect(walkColour(SAMPLE_WALK_PLAN)).toBe(GOAL_WALK_COLOUR)
+    expect(walkColour({ ...SAMPLE_WALK_PLAN, kind: 'rover-check' })).toBe(WALK_KIND_COLOUR['rover-check'])
   })
 })

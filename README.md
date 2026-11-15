@@ -4,9 +4,13 @@ A desktop web map for planning and walking a route on the surface of Mars, at
 Jezero crater. It opens on a 3D globe drawn from NASA Mars Trek imagery, with
 four switchable base layers (satellite, elevation, thermal, geology), place
 search, measuring and terrain-profile tools, and route planning between
-points with distance, slope, hazard and metabolic-cost figures. A walk can be
-planned around science goals taken from the USGS geologic map of Jezero and
-then followed in a first-person surface view built from official elevation
+points with distance, slope, hazard and metabolic-cost figures. Plan a walk
+takes a landing site picked on a map coloured by how flat the ground is,
+mission settings (max slope, samples, energy, duration), and plans three
+scientific walks side by side: over the flat bedrock of the crater floor,
+from a crater rim down to the floor across the geologic map's units, and to
+the Perseverance rover's own waypoints. Each has its sample points, time and
+energy against the settings. A walk is then followed in a first-person surface view built from official elevation
 models and orbital imagery, with a heads-up display, stop cards and the
 Perseverance rover's own photos nearby. Every value on screen is marked as
 official, derived, simulated or unavailable, with its source or method.

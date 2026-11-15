@@ -38,7 +38,7 @@ export type * from './missionTypes'
  * Read it with a selector — useMissionStore((s) => s.viewMode) — so a panel
  * re-renders only when its own slice changes.
  *
- * Time and sun state live in their own slice (#7), not here.
+ * Time and sun state live in their own slice, not here.
  */
 export interface MissionState {
   viewMode: ViewMode

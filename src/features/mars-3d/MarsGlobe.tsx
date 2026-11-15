@@ -53,6 +53,7 @@ import { MeasureLine } from './MeasureLine'
 import { GridDrape } from './GridDrape'
 import { TerrainRegion } from './TerrainRegion'
 import { HoverPick } from './HoverPick'
+import { LandingColours } from './LandingColours'
 import { LandingEllipse } from './LandingEllipse'
 import { SiteLabel, SiteLabelTracker } from './SiteLabel'
 import { PerfProbe } from './PerfProbe'
@@ -95,7 +96,7 @@ const PERF = isPerfEnabled()
 const NO_GROUND_IMAGERY: readonly GroundImagery[] = []
 
 /**
- * Mars globe v1 (#8): the sphere at published radius and tilt, the active
+ * Mars globe v1: the sphere at published radius and tilt, the active
  * layer's NASA Mars Trek image, a slow demonstration spin that eases
  * north-up while it runs (spinMath.ts), and the
  * right-click pick that opens the context menu through the store. Camera
@@ -207,7 +208,7 @@ export function MarsGlobe({
         camera={{
           position: [0, 0, GLOBE_RADIUS * START_CAMERA_DISTANCE_RADII],
           fov: CAMERA_FOV_DEG,
-          // 100 km; the camera controller lowers it with the altitude (nearForAltitude).
+          // 100 km, as before the CTX mosaic; the camera controller lowers it with the altitude (nearForAltitude).
           near: 0.1,
           far: 100,
         }}
@@ -221,7 +222,7 @@ export function MarsGlobe({
             <Starfield />
             <Globe meshRef={mesh} autoRotateRef={autoRotate} texture={texture}>
               {/* The base map's grey tiles go under a grid layer's colours only when they are see-through;
-              over an opaque grid, or a grid that failed, they would hide it. */}
+                 over an opaque grid, or a grid that failed, they would hide it. */}
               <SurfaceTiles detail={detail?.greyUnder && !drape ? null : detail} onZoomChange={onDetailZoom} />
               {/* Below the layer's finest tiles, the global CTX mosaic carries the ground's brightness,
                   as it does the surface view's: given only under the satellite layer (useGroundImagery), and
@@ -479,6 +480,7 @@ function Globe({ meshRef, autoRotateRef, texture, children }: GlobeProps) {
         {/* Inside the mesh, so the subsolar point stays on the surface. */}
         <SunLight />
         {children}
+        <LandingColours />
         <CoordinateGrid />
         <LandingEllipse />
         <RouteOverlay />
