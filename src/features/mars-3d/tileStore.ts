@@ -16,6 +16,12 @@ import { tileKey, type TileIndex } from './tilePyramid'
  * it is still wanted, or when next wanted after that. An empty row
  * or a permanent error is never asked for again.
  *
+ * A wanted tile that is given up (a permanent error, or the last retry
+ * failed) has its parent loaded in its place, one zoom coarser and no
+ * further, and drawn as its stand-in for as long as the tile is wanted: a
+ * source with a bad tile shows its next-coarser picture there, not a hole
+ * down to the layer underneath.
+ *
  * Until a wanted tile is ready, the nearest coarser tile covering it that
  * is cached and ready is drawn instead, marked `fallback`, so zooming in
  * never opens a hole down to the whole-globe image.
@@ -49,8 +55,12 @@ type Entry<R extends TileResources> =
   | { status: 'loading'; tile: TileIndex; controller: AbortController; wanted: number; attempts: number }
   | { status: 'ready'; tile: TileIndex; resources: R; image: ImageBitmap; lastWanted: number; wanted: number }
   | { status: 'empty'; tile: TileIndex; wanted: number }
-  /** `retryAt` is a clock reading, or Infinity when the tile is given up. */
-  | { status: 'error'; tile: TileIndex; wanted: number; attempts: number; retryAt: number }
+  /**
+   * `retryAt` is a clock reading, or Infinity when the tile is given up.
+   * `local` marks a failure on this side (the GPU factory), which a coarser
+   * tile of the same source would meet too, so none is loaded in its place.
+   */
+  | { status: 'error'; tile: TileIndex; wanted: number; attempts: number; retryAt: number; local?: true }
 
 export interface Wanted {
   zoom: number
@@ -79,6 +89,8 @@ export class TileStore<R extends TileResources = TileResources> {
   private readonly setTimer: SetTimer
   /** Attempts so far for a tile about to be queued again. */
   private readonly retries = new Map<string, number>()
+  /** The parents loaded in place of wanted tiles that were given up. */
+  private substituteKeys = new Set<string>()
 
   constructor(
     detail: SurfaceDetail,
@@ -120,8 +132,10 @@ export class TileStore<R extends TileResources = TileResources> {
     const gen = ++this.generation
     const keys = wanted ? wanted.tiles.map(tileKey) : []
     const wantedSet = new Set(keys)
+    const substitutes = wanted ? this.substitutesFor(wanted.tiles, wantedSet) : []
+    this.substituteKeys = new Set(substitutes.map(tileKey))
     for (const [key, e] of this.entries) {
-      if (e.status === 'loading' && !wantedSet.has(key)) {
+      if (e.status === 'loading' && !wantedSet.has(key) && !this.substituteKeys.has(key)) {
         e.controller.abort()
         this.entries.delete(key)
       }
@@ -130,7 +144,7 @@ export class TileStore<R extends TileResources = TileResources> {
     this.retries.clear()
     if (wanted) {
       const now = this.now()
-      for (const tile of wanted.tiles) {
+      for (const tile of [...wanted.tiles, ...substitutes]) {
         const key = tileKey(tile)
         const e = this.entries.get(key)
         if (e?.status === 'error' && e.retryAt <= now) {
@@ -218,7 +232,7 @@ export class TileStore<R extends TileResources = TileResources> {
             this.publish()
           } else {
             // A GPU-side failure is not the network's: do not retry.
-            this.entries.set(key, { status: 'error', tile, wanted: current.wanted, attempts: 0, retryAt: Infinity })
+            this.entries.set(key, { status: 'error', tile, wanted: current.wanted, attempts: 0, retryAt: Infinity, local: true })
           }
         } else if (result.status === 'empty') {
           this.entries.set(key, { status: 'empty', tile, wanted: current.wanted })
@@ -228,6 +242,11 @@ export class TileStore<R extends TileResources = TileResources> {
           const retryAt = result.retryable && delay !== undefined ? this.now() + delay : Infinity
           this.entries.set(key, { status: 'error', tile, wanted: current.wanted, attempts, retryAt })
           if (retryAt !== Infinity) this.retryLater(key, delay!)
+          else if (this.wantedKeys.includes(key) && tile.zoom > 0) {
+            // Given up while wanted: its parent is loaded in its place.
+            this.update(this.lastWanted)
+            return
+          }
         }
         // A stand-in may no longer be needed, or the empty row needs none.
         if (result.status !== 'ready') this.publish()
@@ -244,11 +263,31 @@ export class TileStore<R extends TileResources = TileResources> {
   private retryLater(key: string, delayMs: number): void {
     const cancel = this.setTimer(() => {
       this.timers.delete(cancel)
-      if (this.disposed || !this.wantedKeys.includes(key)) return
+      if (this.disposed || !(this.wantedKeys.includes(key) || this.substituteKeys.has(key))) return
       this.update(this.lastWanted)
       // A timer may fire a little early; the slack keeps the retry due by then.
     }, delayMs + RETRY_SLACK_MS)
     this.timers.add(cancel)
+  }
+
+  /**
+   * The parents of the wanted tiles that were given up, each once, in
+   * wanted order: one zoom coarser, and none for a parent that is itself
+   * wanted. A parent that fails too is not followed further up.
+   */
+  private substitutesFor(tiles: readonly TileIndex[], wantedSet: ReadonlySet<string>): TileIndex[] {
+    const found: TileIndex[] = []
+    const seen = new Set<string>()
+    for (const tile of tiles) {
+      const e = this.entries.get(tileKey(tile))
+      if (e?.status !== 'error' || e.retryAt !== Infinity || e.local || tile.zoom === 0) continue
+      const parent = { zoom: tile.zoom - 1, row: tile.row >> 1, col: tile.col >> 1 }
+      const key = tileKey(parent)
+      if (wantedSet.has(key) || seen.has(key)) continue
+      seen.add(key)
+      found.push(parent)
+    }
+    return found
   }
 
   /** The nearest coarser ready tile covering `tile`, if one is cached. */
