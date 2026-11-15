@@ -1,4 +1,5 @@
 import {
+  MARS_MEAN_RADIUS_KM,
   derived,
   unavailable,
   type Classified,
@@ -34,6 +35,12 @@ import type { WalkHeights } from './walkLegs'
 export interface SearchGrid {
   /** Its cell size, km; 0 when no model can be searched. */
   cellKm: number
+  /**
+   * The same cell in degrees, of latitude and of longitude. The lattice steps
+   * by this, so each node is one model cell on from the last whatever sphere
+   * the product states its cell on; absent, it steps `cellKm` on the mean sphere.
+   */
+  cellDeg?: number
   /** Read whole, so any number of nodes costs no request; else one row-range request per lattice row. */
   readsWhole: boolean
 }
@@ -136,6 +143,9 @@ interface Lattice {
   cy: number
 }
 
+/** Kilometres per degree of latitude in the search plane (`tangentPlane`), on the mean radius. */
+const KM_PER_DEG = (MARS_MEAN_RADIUS_KM * Math.PI) / 180
+
 /** The eight neighbours: column step, row step. */
 const DIRS: readonly (readonly [number, number])[] = [
   [1, 0],
@@ -171,14 +181,19 @@ export async function searchLeg(
   const b = plane.project(to)
   const legKm = Math.hypot(b.x - a.x, b.y - a.y)
   const cosLat = Math.cos((origin.latitude * Math.PI) / 180)
+  // One model cell in the plane's own kilometres. The models state their cell
+  // on the Mars 2000 sphere and the plane is on the mean radius, so `c` km
+  // here is 1.002 cells: every 507th step would span two cells of ground and
+  // read twice the slope.
+  const stepKm = grid.cellDeg && grid.cellDeg > 0 ? grid.cellDeg * KM_PER_DEG : c
   // The margin shrinks first, then the spacing grows a whole cell at a time, until the box fits the budget.
   const fits = (lattice: Lattice) => lattice.nx * lattice.ny <= maxCells && lattice.ny <= maxRows
   let every = 1
-  let L = latticeFor(a, b, c * cosLat, c, Math.max(MARGIN_MIN_KM, MARGIN_FRACTION * legKm))
-  if (!fits(L)) L = latticeFor(a, b, c * cosLat, c, MARGIN_MIN_KM)
+  let L = latticeFor(a, b, stepKm * cosLat, stepKm, Math.max(MARGIN_MIN_KM, MARGIN_FRACTION * legKm))
+  if (!fits(L)) L = latticeFor(a, b, stepKm * cosLat, stepKm, MARGIN_MIN_KM)
   while (!fits(L)) {
     every++
-    L = latticeFor(a, b, every * c * cosLat, every * c, MARGIN_MIN_KM)
+    L = latticeFor(a, b, every * stepKm * cosLat, every * stepKm, MARGIN_MIN_KM)
   }
   const n = L.nx * L.ny
   const box = boxBounds(plane, L)
@@ -198,7 +213,7 @@ export async function searchLeg(
   const read = await terrain.heights(points, signal, c)
   throwIfAborted(signal)
   if (read.classification === 'UNAVAILABLE') return unavailable(`The elevation model could not be read: ${read.reason}`)
-  const { heights: h, model, models } = read.value
+  const { heights: h, model, models, failed } = read.value
   if (h.length !== n || model.length !== n) {
     throw new Error(`The elevation source answered ${h.length} heights for ${n} lattice nodes`)
   }
@@ -208,7 +223,13 @@ export async function searchLeg(
   const usable = (k: number) => !Number.isNaN(h[k]) && models[model[k]].cellKm <= c
   const start = nodeOf(L, a)
   const goal = nodeOf(L, b)
-  const offModel = (what: string) => unavailable<SearchedLeg>(`No elevation model has a height at the ${what}, so there is no ground to search from`)
+  // A stop with no usable height after a model failed to read is a failed read, which a retry may mend.
+  const offModel = (what: string) =>
+    unavailable<SearchedLeg>(
+      failed && failed.length > 0
+        ? `No usable height at the ${what}: an elevation model could not be read (${failed.join('; ')})`
+        : `No elevation model has a height at the ${what}, so there is no ground to search from`,
+    )
   if (!usable(start)) return offModel('departure')
   if (!usable(goal)) return offModel('destination')
 

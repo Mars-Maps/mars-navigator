@@ -37,6 +37,8 @@ export interface WalkHeightRead {
   /** Index into `models` per height; ignored where the height is NaN. */
   model: Uint8Array
   models: readonly SlopeModel[]
+  /** Models that cover a point asked for and could not be read, as "label: reason"; a NaN height may then be a failed read. */
+  failed?: readonly string[]
 }
 
 /** The elevation chain's heights at (lat, lon) pairs. */
