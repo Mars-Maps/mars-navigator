@@ -6,6 +6,7 @@ import {
   describeRoutePick,
   markerLabelAt,
   stopPickShifted,
+  useLandingSite,
   useMissionStore,
   useRoutePick,
   writeRouteSlot,
@@ -177,5 +178,56 @@ describe('marked points into the route fields', () => {
     expect(markerLabelAt(markers, C)).toBeNull()
     expect(markerLabelAt(markers, B)).toBeNull()
     expect(markerLabelAt(markers, null)).toBeNull()
+  })
+})
+
+describe('the landing site pick', () => {
+  const landing = () => useLandingSite.getState().landingSite
+  beforeEach(() => {
+    useMissionStore.setState({ routeDraft: EMPTY_ROUTE, selectedPoint: null, viewMode: 'close-up' })
+    useRoutePick.setState({ slot: null })
+    useLandingSite.getState().clearLandingSite()
+  })
+
+  it('a click sets the site and selects the point; the route draft is left alone', () => {
+    pick().startRoutePick('landing-site')
+    pick().pickRoutePoint(A)
+    expect(landing()).toEqual(A)
+    expect(useMissionStore.getState().selectedPoint).toEqual(A)
+    expect(draft()).toEqual(EMPTY_ROUTE)
+  })
+
+  it('the pick stays on, so a second click moves the site, until it is cancelled', () => {
+    pick().startRoutePick('landing-site')
+    pick().pickRoutePoint(A)
+    expect(pick().slot).toBe('landing-site')
+    pick().pickRoutePoint(B)
+    expect(landing()).toEqual(B)
+    pick().cancelRoutePick()
+    pick().pickRoutePoint(C)
+    expect(landing()).toEqual(B)
+  })
+
+  it('setting the departure does not move the landing site, nor the other way round', () => {
+    pick().startRoutePick('landing-site')
+    pick().pickRoutePoint(A)
+    pick().startRoutePick('departure')
+    pick().pickRoutePoint(B)
+    expect(landing()).toEqual(A)
+    expect(draft().departure).toEqual(B)
+  })
+
+  it('ends without writing during navigation, and ignores a point that is not a coordinate', () => {
+    pick().startRoutePick('landing-site')
+    useMissionStore.setState({ viewMode: 'navigation' })
+    pick().pickRoutePoint(A)
+    expect(landing()).toBeNull()
+    expect(pick().slot).toBeNull()
+    useLandingSite.getState().setLandingSite({ latitude: 95, longitudeEast: 10 })
+    expect(landing()).toBeNull()
+  })
+
+  it('says what the next click does', () => {
+    expect(describeRoutePick('landing-site')).toBe('Click the surface to set the landing site')
   })
 })

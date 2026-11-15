@@ -2,13 +2,14 @@ import { ToolIcon } from './PlaceholderPanels'
 import type { ToolDefinition } from './types'
 
 /**
- * Plan a walk: pick a science goal and get stops and legs. The shell
- * renders its panel, since it runs the planner and writes the walk plan.
+ * Plan a walk: set a landing site on the map and get a walk
+ * with stops and legs. The shell renders its panel, since it runs the
+ * planner and writes the walk plan.
  */
 export const planWalkTool: ToolDefinition = {
   id: 'plan-walk',
   label: 'Plan a walk',
-  hint: 'Pick a science goal and plan a walk with stops',
+  hint: 'Set a landing site on the map and plan a walk with stops',
   icon: (
     <ToolIcon>
       <circle cx="5" cy="18" r="2" />

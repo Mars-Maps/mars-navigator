@@ -1,11 +1,11 @@
 import type { Classified, SlopeLimit } from '../../domain'
 import { ClassificationBadge } from '../../components/ClassificationBadge'
-import { isOverLimit } from './slopeLimit'
+import { isCitedSlopeLimit, isOverLimit } from './slopeLimit'
 
 /**
  * The planner's flag for a slope over its limit: a glyph and words
- * as well as the colour, and the limit's citation in its mark.
- * Nothing while the slope is within the limit or unknown.
+ * as well as the colour, and the limit's citation in its mark; a limit set in the mission settings says so in words and has no
+ * OFFICIAL mark. Nothing while the slope is within the limit or unknown.
  */
 export function SlopeLimitFlag({ slope, limit }: { slope: Classified<number>; limit: SlopeLimit }) {
   if (!isOverLimit(slope, limit)) return null
@@ -15,7 +15,7 @@ export function SlopeLimitFlag({ slope, limit }: { slope: Classified<number>; li
         <path d="M12 3 2 21h20L12 3zm-1 6h2v6h-2V9zm0 8h2v2h-2v-2z" />
       </svg>
       {`Over the ${limit.deg}° limit: ${limit.label}`}
-      <ClassificationBadge classification="OFFICIAL" detail={limit.source} />
+      {isCitedSlopeLimit(limit) && <ClassificationBadge classification="OFFICIAL" detail={limit.source} />}
     </p>
   )
 }
