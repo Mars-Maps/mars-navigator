@@ -38,7 +38,7 @@ export type PlannedWalk = Extract<WalkOption, { status: 'planned' }>
 export const WALK_KIND_TEXT: Readonly<Record<WalkKind, { name: string; purpose: string }>> = {
   'flat-bedrock': {
     name: 'Flat bedrock',
-    purpose: 'Explores the flat bedrock of the crater floor, with the samples spread across it, and comes back to the landing site.',
+    purpose: 'A loop over the flat bedrock of the crater floor, chosen so the samples reach the most floor units and span the most ground, back to the landing site.',
   },
   'rim-to-floor': {
     name: 'Rim to floor',

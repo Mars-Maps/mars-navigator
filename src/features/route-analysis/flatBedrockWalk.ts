@@ -11,6 +11,7 @@ import {
 } from '../../domain'
 import { walkingKcalPerKm } from './metabolicCost'
 import { surfaceDistanceKm } from './routeDistance'
+import { SPANNED_AREA_METHOD, hullArea } from './sampleSpread'
 import {
   DEFAULT_MAX_STOPS,
   DEFAULT_MAX_WALK_KM,
@@ -116,6 +117,13 @@ export interface FlatBedrockDraft {
   samples: number
   /** How each stop after the landing site was placed, by its id, for its reason once the map confirms it. */
   placements: Readonly<Record<string, string>>
+  /**
+   * The walk is a loop: the way back from the last stop is over ground not
+   * walked yet, so the samples go round the whole of it, the way back included.
+   */
+  loop?: boolean
+  /** How many loops there are to choose from, best first (`flatBedrockStops`' `loopChoice`); 0 with no loop. */
+  loopChoices: number
 }
 
 /**
@@ -131,6 +139,8 @@ export function flatBedrockStops(
   start: MarsCoordinate,
   units: readonly GeologicUnitArea[],
   settings: MissionSettings,
+  /** Which loop to take, 0 the best: the shell asks for the next when a loop's legs are too steep on the real heights. */
+  loopChoice = 0,
 ): Classified<FlatBedrockDraft> {
   const reach = flatBedrockReachKm(settings)
   if (reach.classification === 'UNAVAILABLE') return reach
@@ -156,6 +166,26 @@ export function flatBedrockStops(
   }
   const samples = flatBedrockSamples(settings) ?? 0
   const reachMethod = reach.classification === 'DERIVED' ? reach.method : reach.source
+  // A loop spreads the samples over an area, where a walk out and back along one line spans none.
+  // It is taken unless the stops nearest first reach more of the floor's units than it does.
+  const loops = loopFloorChoices(start, units, reachKm, samples)
+  const loop = loops[Math.min(Math.max(0, loopChoice), loops.length - 1)] ?? null
+  const unitsNearestFirst = new Set(stops.slice(1).flatMap((s) => (s.unit.classification === 'UNAVAILABLE' ? [] : [s.unit.value.name])))
+  if (loop !== null && loop.units.length >= unitsNearestFirst.size) {
+    return derived(
+      {
+        goal: FLAT_BEDROCK_GOAL,
+        stops: [stops[0], ...loop.stops],
+        reachKm,
+        outKm,
+        samples,
+        placements: Object.fromEntries(loop.stops.map((s) => [s.id, loop.placement])),
+        loop: true,
+        loopChoices: loops.length,
+      },
+      `A loop over the crater-floor units of the site's geologic map (${FLAT_BEDROCK_GOAL.unitNames.join(', ')}), ${loop.lengthKm.toFixed(2)} km round, of the ${reachKm.toFixed(2)} km the walk has. ${LOOP_CHOICE}. This loop's sample places are on ${loop.units.length} of the floor's units (${loop.units.join(', ')}) and span ${loop.areaKm2.toFixed(2)} km² on level ground. ${SPANNED_AREA_METHOD}. ${reachMethod}`,
+    )
+  }
   const nearest = `the point of that unit's polygon nearest the landing site, ${FLOOR_INSET_KM * 1000} m inside it`
   if (stops.length >= 2) {
     const placements = Object.fromEntries(stops.slice(1).map((s) => [s.id, nearest]))
@@ -166,7 +196,7 @@ export function flatBedrockStops(
         : { ...s, reason: stopReason(FLAT_BEDROCK_GOAL, s.unit.value, outKm, { placement: nearest, reachBasis: FLAT_BEDROCK_REACH_BASIS }) },
     )
     return derived(
-      { goal: FLAT_BEDROCK_GOAL, stops: reasoned, reachKm, outKm, samples, placements },
+      { goal: FLAT_BEDROCK_GOAL, stops: reasoned, reachKm, outKm, samples, placements, loopChoices: 0 },
       `Stops on the crater-floor units of the site's geologic map (${FLAT_BEDROCK_GOAL.unitNames.join(', ')}), nearest first, kept while the walk stop to stop and the way back to the landing site are within ${reachKm.toFixed(2)} km together: ${reachMethod}`,
     )
   }
@@ -182,9 +212,139 @@ export function flatBedrockStops(
       outKm,
       samples,
       placements: Object.fromEntries(across.stops.map((s) => [s.id, across.placement])),
+      loopChoices: 0,
     },
     `Stops across the crater-floor polygon the landing site stands on (${across.unit}), out along the direction where it reaches farthest within ${outKm.toFixed(2)} km, half of the ${reachKm.toFixed(2)} km the walk has for going out and coming back: ${reachMethod}`,
   )
+}
+
+/** Headings tried for a loop, every 22.5°; how many places it visits; and how much of the reach it takes. */
+const LOOP_HEADINGS = 16
+const LOOP_CORNERS = [4, 3] as const
+// Never the whole reach: the reach is worked out on level ground, and the real heights cost more.
+const LOOP_SCALES = [0.9, 0.7, 0.5, 0.3] as const
+/** How many loops are kept to choose from, best first: the best on each heading, so the next one goes another way. */
+export const LOOP_CHOICES = LOOP_HEADINGS
+
+export interface FloorLoop {
+  stops: WalkStop[]
+  placement: string
+  /** The floor units the loop's sample places are on. */
+  units: string[]
+  /** The area its sample places span on level ground, km². */
+  areaKm2: number
+  /** Round the loop and back to the landing site, km. */
+  lengthKm: number
+}
+
+/** How a loop is chosen among those tried, for the walk's method and each stop's reason. */
+export const LOOP_CHOICE = `Of the loops tried (regular, with the landing site as one corner and ${LOOP_CORNERS.map((n) => n - 1).join(' or ')} stops as the others, on ${LOOP_HEADINGS} headings, at ${LOOP_SCALES.map((s) => `${Math.round(s * 100)}%`).join(', ')} of the reach), only those whose every stop is on the crater floor are kept; of these the one is taken whose sample places are on the most of the floor's units, then has the most samples, then spans the largest area (the area inside the outline of the sample places). For a walk of a given length a loop spans more ground than a walk out and back along one line, which spans none`
+
+/**
+ * The loop of stops that spreads the samples over the most ground: the
+ * walk leaves the landing site, visits two or three places and comes back
+ * from the last over ground not walked yet. Each candidate is a regular
+ * polygon with the landing site as a corner (the shape that encloses the
+ * most for its length), its samples placed on the floor ground it crosses
+ * (`floorSamplePlacesKm`); the choice is `LOOP_CHOICE`. Null when no loop
+ * tried has every stop on the floor and room for three samples.
+ */
+export function loopFloorStops(start: MarsCoordinate, units: readonly GeologicUnitArea[], reachKm: number, samples: number): FloorLoop | null {
+  return loopFloorChoices(start, units, reachKm, samples)[0] ?? null
+}
+
+/** The loops of `loopFloorStops`, the best on each heading, best first: the next is for when the best cannot be walked. */
+export function loopFloorChoices(
+  start: MarsCoordinate,
+  units: readonly GeologicUnitArea[],
+  reachKm: number,
+  samples: number,
+): FloorLoop[] {
+  if (!(reachKm > 0) || samples < 3) return []
+  const plane = tangentPlane(start)
+  const floorNames = new Set(FLAT_BEDROCK_GOAL.unitNames)
+  const floor = units
+    .filter((a) => floorNames.has(a.unit.name))
+    .map((a) => ({ unit: a.unit, rings: a.rings.map((r) => r.map(plane.project)).filter((r) => r.length >= 3) }))
+    .filter((a) => a.rings.length > 0)
+  if (floor.length === 0) return []
+  const unitAt = (p: Xy) => floor.find((a) => insideRings(p, a.rings))?.unit ?? null
+
+  type Loop = { corners: Xy[]; units: string[]; placed: number; areaKm2: number; lengthKm: number; bearing: number }
+  const found: Loop[] = []
+  for (const n of LOOP_CORNERS) {
+    for (const scale of LOOP_SCALES) {
+      const lengthKm = reachKm * scale
+      const radius = lengthKm / n / (2 * Math.sin(Math.PI / n))
+      for (let h = 0; h < LOOP_HEADINGS; h++) {
+        const heading = (2 * Math.PI * h) / LOOP_HEADINGS
+        const centre = { x: radius * Math.sin(heading), y: radius * Math.cos(heading) }
+        // The landing site is the corner opposite the heading; the others follow round the polygon.
+        const corners = Array.from({ length: n - 1 }, (_, k) => {
+          const at = heading + Math.PI + (2 * Math.PI * (k + 1)) / n
+          return { x: centre.x + radius * Math.sin(at), y: centre.y + radius * Math.cos(at) }
+        })
+        // A stop stands inside the floor, not on its edge: the corner and a point the inset nearer the centre.
+        const inside = corners.every((c) => {
+          const d = Math.hypot(centre.x - c.x, centre.y - c.y)
+          const t = d > 0 ? Math.min(1, FLOOR_INSET_KM / d) : 0
+          return unitAt(c) !== null && unitAt({ x: c.x + (centre.x - c.x) * t, y: c.y + (centre.y - c.y) * t }) !== null
+        })
+        if (!inside) continue
+        const closed = [{ x: 0, y: 0 }, ...corners, { x: 0, y: 0 }]
+        const places = floorSamplePlacesKm(closed.map(plane.unproject), units, samples).map((km) => pointAlong(closed, km))
+        if (places.length < 3) continue
+        const sampled = [...new Set(places.flatMap((p) => unitAt(p)?.name ?? []))]
+        const areaKm2 = hullArea(places)
+        if (areaKm2 > 0) found.push({ corners, units: sampled, placed: places.length, areaKm2, lengthKm, bearing: heading })
+      }
+    }
+  }
+  // Most units, then most samples, then most ground; a stable sort, so equal loops keep the order tried.
+  found.sort((a, b) => b.units.length - a.units.length || b.placed - a.placed || (Math.abs(b.areaKm2 - a.areaKm2) > 1e-9 ? b.areaKm2 - a.areaKm2 : 0))
+  // The best on each heading only: the next choice then goes another way, round whatever stopped the one before.
+  const headings = new Set<number>()
+  const choices = found.filter((loop) => !headings.has(loop.bearing) && headings.add(loop.bearing))
+  return choices.slice(0, LOOP_CHOICES).map((chosen) => loopOf(chosen, plane, unitAt, reachKm))
+}
+
+function loopOf(
+  chosen: { corners: Xy[]; units: string[]; areaKm2: number; lengthKm: number; bearing: number },
+  plane: ReturnType<typeof tangentPlane>,
+  unitAt: (p: Xy) => GeologicUnitArea['unit'] | null,
+  reachKm: number,
+): FloorLoop {
+  const bearing = Math.round((chosen.bearing * 180) / Math.PI)
+  const placement = `a corner of a loop of ${chosen.lengthKm.toFixed(2)} km from the landing site and back, heading ${bearing}° from north. ${LOOP_CHOICE}`
+  const stops = chosen.corners.map((corner, k): WalkStop => {
+    const n = k + 2
+    // Non-null: every corner of a kept loop is on the floor.
+    const unit = unitAt(corner)!
+    return {
+      id: `${FLAT_BEDROCK_GOAL.id}-${n}`,
+      label: `${stopName(n)} · ${unit.name}`,
+      coordinate: plane.unproject(corner),
+      unit: official(unit, unit.map.citation),
+      reason: stopReason(FLAT_BEDROCK_GOAL, unit, reachKm / 2, { placement, reachBasis: FLAT_BEDROCK_REACH_BASIS }),
+    }
+  })
+  return { stops, placement, units: chosen.units, areaKm2: chosen.areaKm2, lengthKm: chosen.lengthKm }
+}
+
+/** The point `km` along the line through `path`, in the plane. */
+function pointAlong(path: readonly Xy[], km: number): Xy {
+  let left = km
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]
+    const b = path[i]
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    if (left <= len || i === path.length - 1) {
+      const t = len > 0 ? Math.min(1, Math.max(0, left / len)) : 0
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+    }
+    left -= len
+  }
+  return path[path.length - 1]
 }
 
 /** Directions tried for a walk across the floor polygon under the landing site: every 22.5°. */

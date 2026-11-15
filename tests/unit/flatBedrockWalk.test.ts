@@ -14,12 +14,15 @@ import {
   FLAT_BEDROCK_REASONS,
   FLOOR_INSET_KM,
   FLAT_BEDROCK_REACH_BASIS,
+  LOOP_CHOICE,
   acrossFloorStops,
   flatBedrockReachKm,
   flatBedrockSamples,
   flatBedrockStops,
   floorSamplePlacesKm,
+  loopFloorStops,
 } from '../../src/features/route-analysis/flatBedrockWalk'
+import { hullArea } from '../../src/features/route-analysis/sampleSpread'
 import { walkingKcalPerKm } from '../../src/features/route-analysis/metabolicCost'
 import { surfaceDistanceKm } from '../../src/features/route-analysis/routeDistance'
 import { DEFAULT_MAX_WALK_KM } from '../../src/features/route-analysis/scienceGoals'
@@ -172,20 +175,31 @@ describe('a landing site on a large floor polygon', () => {
   // One 20 × 20 km floor polygon round the landing site, nothing else of the floor in reach.
   const big = [area(FLOOR, box(-10, -10, 10, 10)), area('Jezero fan 1 unit', box(10, -1, 12, 1))]
 
-  it('walks across the polygon it stands on, rather than saying no floor is in reach', () => {
+  it('walks a loop over the polygon it stands on, rather than saying no floor is in reach', () => {
     const draft = flatBedrockStops(START, big, settings())
     if (draft.classification !== 'DERIVED') throw new Error(draft.classification === 'UNAVAILABLE' ? draft.reason : 'expected DERIVED')
-    const { stops, reachKm, placements, samples } = draft.value
+    const { stops, reachKm, placements, samples, loop } = draft.value
+    expect(loop).toBe(true)
     expect(stops).toHaveLength(FLAT_BEDROCK_MAX_STOPS + 1)
     expect(stops[0].coordinate).toEqual(START)
     expect(samples).toBe(DEFAULT_MISSION_SETTINGS.samples)
     for (const stop of stops.slice(1)) {
       expect(stop.unit.classification !== 'UNAVAILABLE' && stop.unit.value.name).toBe(FLOOR)
-      // Out along the line and back along it: no stop past half the reach.
       expect(surfaceDistanceKm(START, stop.coordinate)).toBeLessThanOrEqual(reachKm / 2 + 1e-9)
-      expect(placements[stop.id]).toMatch(/across the floor polygon it stands on/)
+      expect(placements[stop.id]).toMatch(/a corner of a loop/)
       expect(stop.reason.classification === 'DERIVED' && stop.reason.method).toContain(FLAT_BEDROCK_REACH_BASIS)
     }
+    // Round the loop and home, inside the reach with room for the real heights.
+    const round = [...stops, stops[0]].reduce((km, s, i, all) => (i === 0 ? 0 : km + surfaceDistanceKm(all[i - 1].coordinate, s.coordinate)), 0)
+    expect(round).toBeLessThanOrEqual(reachKm * 0.9 + 0.01)
+    expect(draft.method).toMatch(/^A loop over the crater-floor units/)
+    expect(draft.method).toContain(LOOP_CHOICE)
+  })
+
+  it('falls back to a line across the polygon when too few samples are asked for to span any ground', () => {
+    const draft = flatBedrockStops(START, big, settings({ samples: 2 }))
+    if (draft.classification !== 'DERIVED') throw new Error('expected DERIVED')
+    expect(draft.value.loop).toBeUndefined()
     expect(draft.method).toMatch(/across the crater-floor polygon the landing site stands on/)
   })
 
@@ -244,5 +258,50 @@ describe('floorSamplePlacesKm', () => {
       expect(km).toBeGreaterThan(1.5)
       expect(km).toBeLessThanOrEqual(total)
     }
+  })
+})
+
+describe('loopFloorStops: the most units, then the most ground', () => {
+  const xy = (c: MarsCoordinate) => {
+    const kmPerDegLon = KM_PER_DEG_LAT * Math.cos(START.latitude * RAD)
+    return { x: (c.longitudeEast - START.longitudeEast) * kmPerDegLon, y: (c.latitude - START.latitude) * KM_PER_DEG_LAT }
+  }
+
+  it('spans ground where a line out and back spans none', () => {
+    const loop = loopFloorStops(START, [area(FLOOR, box(-10, -10, 10, 10))], 6, 6)
+    if (loop === null) throw new Error('expected a loop')
+    // Three stops and the landing site: a square of the largest length tried, 0.9 of the reach.
+    expect(loop.stops).toHaveLength(3)
+    expect(loop.lengthKm).toBeCloseTo(5.4, 6)
+    expect(loop.areaKm2).toBeGreaterThan(1)
+    expect(hullArea([START, ...loop.stops.map((s) => s.coordinate)].map(xy))).toBeCloseTo(1.35 ** 2, 2)
+  })
+
+  it('heads for the loop whose samples are on both floor units, though a loop on one is as large', () => {
+    // The floor unit all round, the etched unit only to the east: a loop to the west would sample one unit.
+    const both = [area(FLOOR, box(-10, -10, 0.3, 10)), area(ETCHED, box(0.3, -10, 10, 10))]
+    const loop = loopFloorStops(START, both, 6, 6)
+    if (loop === null) throw new Error('expected a loop')
+    expect([...loop.units].sort()).toEqual([FLOOR, ETCHED].sort())
+    expect(loop.stops.some((s) => xy(s.coordinate).x > 0.3)).toBe(true)
+  })
+
+  it('keeps every stop on the floor, taking a smaller loop where the floor is small', () => {
+    const small = [area(FLOOR, box(-0.3, -0.3, 1.2, 1.2))]
+    const loop = loopFloorStops(START, small, 6, 6)
+    if (loop === null) throw new Error('expected a loop')
+    expect(loop.lengthKm).toBeLessThan(5.4)
+    for (const stop of loop.stops) {
+      const p = xy(stop.coordinate)
+      expect(p.x).toBeGreaterThan(-0.3)
+      expect(p.x).toBeLessThan(1.2)
+      expect(p.y).toBeGreaterThan(-0.3)
+      expect(p.y).toBeLessThan(1.2)
+    }
+  })
+
+  it('gives no loop off the floor, or with fewer than three samples to span ground with', () => {
+    expect(loopFloorStops(START, [area('Jezero fan 1 unit', box(-5, -5, 5, 5))], 6, 6)).toBeNull()
+    expect(loopFloorStops(START, [area(FLOOR, box(-10, -10, 10, 10))], 6, 2)).toBeNull()
   })
 })
