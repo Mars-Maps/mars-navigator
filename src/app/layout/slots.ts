@@ -248,7 +248,10 @@ export const SLOTS: Record<SlotId, SlotSpec> = {
     modes: GLOBE,
     // `caption` and `pointMenu` are sized against this 24 rem width; change
     // them with it.
-    position: 'bottom-4 left-1/2 w-96 -translate-x-1/2',
+    // The slot itself takes no pointer: a tool's panel can sit beside it (step 3 of Plan a
+    // walk moves right), and the empty box it leaves must not keep drags from the map.
+    // The dock and the panel take the pointer themselves (`ToolDock`).
+    position: 'bottom-4 left-1/2 w-96 -translate-x-1/2 pointer-events-none!',
   },
   terrainPlot: {
     label: 'Terrain Profile 3D plot',

@@ -81,7 +81,8 @@ export function ToolDock({ panels }: { panels?: ShellPanels }) {
       {active && hasPanel(active) && (
         <div
           id={PANEL_ID}
-          className="w-full"
+          // Only the panel takes the pointer, wherever it sits: this box stays in the middle when the panel moves aside.
+          className="pointer-events-none w-full *:pointer-events-auto"
           onFocus={() => {
             focusInPanel.current = true
           }}
@@ -99,7 +100,7 @@ export function ToolDock({ panels }: { panels?: ShellPanels }) {
         aria-label="Tools"
         onKeyDown={onToolbarKeyDown}
         {...barProps}
-        className="flex h-[3.625rem] items-end gap-1 rounded-panel border border-line/60 bg-surface/70 px-2 pb-1 shadow-panel backdrop-blur-glass"
+        className="pointer-events-auto flex h-[3.625rem] items-end gap-1 rounded-panel border border-line/60 bg-surface/70 px-2 pb-1 shadow-panel backdrop-blur-glass"
       >
         {TOOL_REGISTRY.map((tool, i) => (
           <ToolButton
