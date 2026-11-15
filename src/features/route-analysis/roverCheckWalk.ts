@@ -14,7 +14,7 @@ import {
 import type { ElevationProfile } from './elevationProfile'
 import { surfaceDistanceKm } from './routeDistance'
 import { DEFAULT_MAX_WALK_KM } from './scienceGoals'
-import { fitsSettings, MIN_SAMPLE_SPACING_M, SAMPLE_MINUTES, walkBudget, type WalkBudget, type WalkLimit } from './walkBudget'
+import { fitsSettings, joinProfiles, MIN_SAMPLE_SPACING_M, SAMPLE_MINUTES, walkBudget, type WalkBudget, type WalkLimit } from './walkBudget'
 
 /**
  * Walk 3 of 3, verifying rover measurements: a walk from the landing
@@ -24,9 +24,11 @@ import { fitsSettings, MIN_SAMPLE_SPACING_M, SAMPLE_MINUTES, walkBudget, type Wa
  * Two pure steps with a height read between them, so this module never
  * reads anything itself:
  *   1. `roverCheckStops` picks waypoints of the traverse, nearest first.
- *   2. The shell reads the elevation profile along the path they make.
+ *   2. The shell reads the elevation profile along the path they make, and
+ *      along the straight line back to the landing site from each of them.
  *   3. `fitRoverCheck` cuts the walk back to the most stops whose time,
- *      energy and slope fit the settings (`walkBudget`).
+ *      energy and slope fit the settings (`walkBudget`), the way back from
+ *      the last of them included: the walk ends at the landing site.
  *
  * The walk says what it revisits, never a value the rover measured: the app
  * holds the rover's path and photos, not its instrument readings.
@@ -142,14 +144,27 @@ export function roverCheckPath(candidate: RoverCheckCandidate): MarsCoordinate[]
   return [candidate.start, ...candidate.stops.map((s) => s.coordinate)]
 }
 
+/**
+ * The ways back the shell reads heights along, one per stop: the straight
+ * line from that stop to the start. The walk ends with the one from its
+ * last stop, and which stop is last is what `fitRoverCheck` decides.
+ */
+export function roverCheckReturnPaths(candidate: RoverCheckCandidate): MarsCoordinate[][] {
+  return candidate.stops.map((s) => [s.coordinate, candidate.start])
+}
+
+/** Why a way back has no profile, where the shell hands none. */
+export const ROVER_CHECK_NO_RETURN = 'The heights on the way back to the landing site could not be read'
+
 export interface RoverCheckWalk {
   start: MarsCoordinate
   /** The waypoints kept, in walking order. */
   stops: RoverCheckStop[]
-  /** Start then stops: the straight lines walked. */
+  /** Start, the stops, then the start again: the straight lines walked, the way back last. */
   path: MarsCoordinate[]
   /** One at each stop, in walking order, SAMPLE_MINUTES each. */
   samples: SampleStop[]
+  /** Of the whole walk: out to the last stop kept, the samples, and the way back. */
   budget: WalkBudget
   /** Waypoints of the candidate left off to fit, and the limit the next one would break. */
   cut: {
@@ -162,16 +177,21 @@ export interface RoverCheckWalk {
 }
 
 /**
- * The longest start of the candidate walk that fits `settings`: each extra
- * stop is one more sample and the walk to it, kept while the time, energy
- * and slope all stay within the settings. `profile` is the elevation profile
- * along `roverCheckPath(candidate)`. UNAVAILABLE, with the limit, when not
- * even the first stop fits, or when a figure needed to check is unknown.
+ * The longest start of the candidate walk that fits `settings` and gets
+ * back: each extra stop is one more sample, the walk to it and the way
+ * back from it to the landing site, kept while the time, energy and slope
+ * of all of that stay within the settings. `profile` is the elevation
+ * profile along `roverCheckPath(candidate)`; `returns[k]` is the one along
+ * `roverCheckReturnPaths(candidate)[k]`, or null where it could not be
+ * read, which is a figure unknown and never a way back that costs nothing.
+ * UNAVAILABLE, with the limit, when not even the first stop fits, or when
+ * a figure needed to check is unknown.
  */
 export function fitRoverCheck(
   candidate: RoverCheckCandidate,
   profile: ElevationProfile,
   settings: MissionSettings,
+  returns: readonly (ElevationProfile | null)[],
 ): Classified<RoverCheckWalk> {
   const path = roverCheckPath(candidate)
   const atKm: number[] = []
@@ -186,16 +206,19 @@ export function fitRoverCheck(
   let stoppedBy: WalkLimit | null = null
   let unchecked: { limits: WalkLimit[]; reason: string } | null = null
   for (let k = 1; k <= candidate.stops.length; k++) {
-    const budget = walkBudget(upTo(profile, atKm[k - 1]), k)
+    const back = returns[k - 1] ?? null
+    // Out to waypoint k and straight back from it: the walk that would be made if k were the last.
+    const budget = walkBudget(back === null ? NO_PROFILE : joinProfiles(upTo(profile, atKm[k - 1]), back), k)
     const fit = fitsSettings(budget, settings)
-    // A figure unknown on the way to waypoint k: the walk stops before it, keeping those that fit.
+    const why = back === null ? ROVER_CHECK_NO_RETURN : unknownReason(budget)
+    // A figure unknown on the way to waypoint k or back from it: the walk stops before it, keeping those that fit.
     if (fit.fits === null && kept > 0) {
-      unchecked = { limits: fit.unknown, reason: unknownReason(budget) }
+      unchecked = { limits: fit.unknown, reason: why }
       break
     }
     if (fit.fits === null) {
       return unavailable(
-        `The walk to waypoint ${k} cannot be checked against the settings (${fit.unknown.join(', ')} not known): ${unknownReason(budget)}`,
+        `The walk to waypoint ${k} and back cannot be checked against the settings (${fit.unknown.join(', ')} not known): ${why}`,
       )
     }
     if (!fit.fits) {
@@ -206,7 +229,7 @@ export function fitRoverCheck(
     keptBudget = budget
   }
   if (kept === 0 || keptBudget === null) {
-    return unavailable(`Not even the nearest waypoint fits the settings: the walk to it breaks the ${stoppedBy ?? 'settings'} limit`)
+    return unavailable(`Not even the nearest waypoint fits the settings: the walk to it and back breaks the ${stoppedBy ?? 'settings'} limit`)
   }
 
   const stops = candidate.stops.slice(0, kept)
@@ -214,12 +237,12 @@ export function fitRoverCheck(
     {
       start: candidate.start,
       stops,
-      path: path.slice(0, kept + 1),
+      path: [...path.slice(0, kept + 1), candidate.start],
       samples: stops.map((s, i) => ({ id: `sample-${i + 1}`, order: i + 1, coordinate: s.coordinate, dwellMin: SAMPLE_MINUTES })),
       budget: keptBudget,
       cut: { count: candidate.stops.length - kept, limit: stoppedBy, unchecked },
     },
-    `${WAYPOINT_CHOICE}. A sample at each waypoint, not evenly spaced. Cut back to the most waypoints whose walk and samples fit the duration, energy and slope limit of the settings. Waypoints: ${candidate.source}`,
+    `${WAYPOINT_CHOICE}. A sample at each waypoint, not evenly spaced. The walk ends back at the landing site, along the straight line from its last waypoint. Cut back to the most waypoints whose walk, samples and way back fit the duration, energy and slope limit of the settings. Waypoints: ${candidate.source}`,
   )
 }
 
@@ -228,6 +251,9 @@ function upTo(profile: ElevationProfile, km: number): ElevationProfile {
   const samples = profile.samples.filter((s) => s.distanceKm <= km + 1e-9)
   return { samples, totalDistanceKm: samples.length > 0 ? samples[samples.length - 1].distanceKm : 0 }
 }
+
+/** No profile at all: every figure of its budget is UNAVAILABLE, so nothing is checked on it. */
+const NO_PROFILE: ElevationProfile = { samples: [], totalDistanceKm: 0 }
 
 function unknownReason(b: WalkBudget): string {
   for (const f of [b.totalMin, b.walkingKcal, b.steepestDeg]) if (f.classification === 'UNAVAILABLE') return f.reason

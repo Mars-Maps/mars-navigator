@@ -12,7 +12,7 @@ import {
 } from '../../domain'
 import type { ElevationProfile } from './elevationProfile'
 import { surfaceDistanceKm } from './routeDistance'
-import { insideRings, tangentPlane, type Xy } from './scienceGoals'
+import { insideRings, returnStop, tangentPlane, type Xy } from './scienceGoals'
 import { walkingKcalPerKm } from './metabolicCost'
 import {
   SAMPLE_INSET_KM,
@@ -33,8 +33,10 @@ import { suitedWalkingKmh } from './walkingSpeed'
  * asks here.
  *
  * The astronaut walks out to the rim-side end first and samples on the way
- * back, so the samples come in rim-to-floor order and, landed on the floor,
- * the walk ends where it began. It shows where the mapped units change. It
+ * back, so the samples come in rim-to-floor order. From the floor-side end
+ * the walk turns round and comes back along the line to the landing site:
+ * it always ends where it began, and that last leg is in the time and the
+ * energy the ends are fitted to. It shows where the mapped units change. It
  * says nothing about minerals (`TRANSECT_COMPOSITION`).
  */
 
@@ -53,7 +55,7 @@ export interface TransectSample {
 }
 
 export interface TransectWalk {
-  /** In walking order, every corner of the line walked: the landing site, the rim-side end, the landing site again, the floor end. */
+  /** In walking order, every corner of the line walked: the landing site, the rim-side end, the landing site again, the floor end, and the landing site, where the walk ends. */
   stops: WalkStop[]
   /** The line walked, every stop included, in walking order. */
   path: MarsCoordinate[]
@@ -155,9 +157,11 @@ export function transectWalk(
     sums.rimMin.push(sums.rimMin[i] + (length / suitedWalkingKmh(-gradient)) * 60)
     sums.rimKcal.push(sums.rimKcal[i] + length * walkingKcalPerKm(-gradient))
   }
+  // Out toward the rim to `turn`, back toward the floor to `end`, then toward the rim again from `end` to
+  // the landing site: the last is nothing when the walk ends at the landing site (`end` is `iStart`).
   const cost = (turn: number, end: number) => ({
-    minutes: sums.rimMin[iStart] - sums.rimMin[turn] + sums.floorMin[end] - sums.floorMin[turn],
-    kcal: sums.rimKcal[iStart] - sums.rimKcal[turn] + sums.floorKcal[end] - sums.floorKcal[turn],
+    minutes: sums.rimMin[iStart] - sums.rimMin[turn] + sums.floorMin[end] - sums.floorMin[turn] + sums.rimMin[end] - sums.rimMin[iStart],
+    kcal: sums.rimKcal[iStart] - sums.rimKcal[turn] + sums.floorKcal[end] - sums.floorKcal[turn] + sums.rimKcal[end] - sums.rimKcal[iStart],
   })
   const better = (a: Candidate, b: Candidate | null) =>
     b === null || a.fit > b.fit || (a.fit === b.fit && (a.count > b.count || (a.count === b.count && a.named > b.named)))
@@ -286,7 +290,10 @@ export function transectWalk(
           : 'The landing site, where this transect ends',
     )
   }
-  if (end > iStart) add(unitAt[end]?.name ?? 'floor end', end, 'The floor-side end of the transect')
+  if (end > iStart) {
+    add(unitAt[end]?.name ?? 'floor end', end, 'The floor-side end of the transect: the walk turns round here and comes back to the landing site')
+    stops.push(returnStop(TRANSECT_GOAL, stops.length + 1, stops[0]))
+  }
 
   const limit = `where the ground is over the ${settings.maxSlopeDeg}° slope limit or has no height`
   const tight = 'more does not fit the duration and the energy with a sample on each unit'
@@ -313,11 +320,11 @@ export function transectWalk(
   if (iEnd < base.length - 1) {
     notes.push(`Toward the floor the ground can be walked ${(base[iEnd].distanceKm - base[iStart].distanceKm).toFixed(2)} km past the landing site, to ${limit}`)
   }
-  if (leftOut.floor) notes.push(leftOutNote('past the landing site toward the floor', names(turn, iEnd)))
+  // Left out by the ranking, or never among the best because going there and coming back does not fit.
+  if (leftOut.floor || (end === iStart && iEnd > iStart)) notes.push(leftOutNote('past the landing site toward the floor', names(turn, iEnd)))
   else if (end < iEnd) notes.push(`The transect goes ${pastKm.toFixed(2)} km past the landing site toward the floor, not the whole line: ${tight}`)
   if (line.floor === 'out-of-reach') notes.push('No floor unit is within reach of the landing site, so the transect ends at the landing site')
   if (line.floor === 'toward-rim') notes.push("The nearest floor unit lies on the rim's side of the landing site, so the line is not carried on past the landing site")
-  if (end > iStart) notes.push(`The walk ends ${pastKm.toFixed(2)} km from the landing site; the way back is not in its time and energy`)
   if (samples.length < settings.samples) {
     notes.push(
       samples.length === count
@@ -345,7 +352,7 @@ export function transectWalk(
       notes,
       composition: TRANSECT_COMPOSITION,
     },
-    `${line.method}. The walk goes out to the rim-side end and samples on the way back: one sample in each unit crossed, ${SAMPLE_INSET_KM * 1000} m or more along the line from where the line crosses a contact, the rest spread along the line, each as far from the others as the line allows; the ends are put where the most units can be sampled within the mission settings`,
+    `${line.method}. The walk goes out to the rim-side end and samples on the way back, then comes back along the line to the landing site from its floor-side end: one sample in each unit crossed, ${SAMPLE_INSET_KM * 1000} m or more along the line from where the line crosses a contact, the rest spread along the line, each as far from the others as the line allows; the ends are put where the most units can be sampled with the whole walk, the way back to the landing site included, within the mission settings`,
   )
 }
 
@@ -397,12 +404,13 @@ function describe(unit: GeologicUnit | null): Classified<string> {
   return official(`${unit.name}: "${unit.description}"`, unit.map.citation)
 }
 
-/** The walk's profile: out from the landing site to `turn`, then back along the line to `end`. */
+/** The walk's profile: out from the landing site to `turn`, back along the line to `end`, and from there back to the landing site. */
 function walkProfile(profile: ElevationProfile, iStart: number, turn: number, end: number): ElevationProfile {
   const base = profile.samples
   const order: number[] = []
   for (let i = iStart; i > turn; i--) order.push(i)
   for (let i = turn; i <= end; i++) order.push(i)
+  for (let i = end - 1; i >= iStart; i--) order.push(i)
   let km = 0
   const samples = order.map((i, n) => {
     if (n > 0) km += Math.abs(base[i].distanceKm - base[order[n - 1]].distanceKm)

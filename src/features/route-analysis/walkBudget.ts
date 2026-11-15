@@ -72,6 +72,19 @@ function stretches(profile: ElevationProfile): Stretch[] {
   return out
 }
 
+/**
+ * `first` then `then` as one walk: `then`'s distances carried on from
+ * where `first` ends. For a walk whose way back is read apart from its way
+ * out. Where `then` starts on `first`'s last point the two samples there
+ * are no distance apart and cost nothing.
+ */
+export function joinProfiles(first: ElevationProfile, then: ElevationProfile): ElevationProfile {
+  const offset = first.samples.length > 0 ? first.samples[first.samples.length - 1].distanceKm : 0
+  const base = then.samples.length > 0 ? then.samples[0].distanceKm : 0
+  const samples = [...first.samples, ...then.samples.map((s) => ({ ...s, distanceKm: offset + (s.distanceKm - base) }))]
+  return { samples, totalDistanceKm: samples.length > 0 ? samples[samples.length - 1].distanceKm : 0 }
+}
+
 export interface WalkBudget {
   /** Along the path, km. */
   distanceKm: Classified<number>

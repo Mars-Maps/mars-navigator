@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_MISSION_SETTINGS, derived, official, unavailable, walkPlanProblem, type GeologicUnit, type GeologicUnitArea, type MarsCoordinate, type WalkPlan } from '../../src/domain'
 import { TRANSECT_GOAL, TRANSECT_REASONS, isOwnRim, transectLine, type NamedCrater } from '../../src/features/route-analysis/transectLine'
 import { confirmTransectSamples, confirmTransectStops, sampledUnits, transectWalk } from '../../src/features/route-analysis/transectWalk'
+import { RETURN_STOP_LABEL } from '../../src/features/route-analysis/scienceGoals'
 import { START, KM_PER_DEG, at, xOf, MAP, unit, UNITS, settings, lineOf, profileOf, walkOf } from '../fixtures/transect'
 
 describe('the review of the transect', () => {
@@ -30,8 +31,19 @@ describe('the review of the transect', () => {
     expect(xOf(line.path[2])).toBeCloseTo(1.2, 2)
     if (walk.classification !== 'DERIVED') throw new Error('no walk')
     expect(walk.value.unitsCrossed).toEqual(['Crater rim unit', 'Upper etched unit', 'Jezero fan 2 unit', 'Jezero floor unit'])
-    expect(walk.value.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · Crater rim unit', 'Stop 2 · back at the landing site', 'Stop 3 · Jezero floor unit'])
-    expect(walk.value.notes.join(' ')).toContain('the way back is not in its time and energy')
+    expect(walk.value.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · Crater rim unit', 'Stop 2 · back at the landing site', 'Stop 3 · Jezero floor unit', RETURN_STOP_LABEL])
+    // The walk ends where it began, and the way back from the floor end is in its distance and its time.
+    const stops = walk.value.stops
+    expect(stops[stops.length - 1].coordinate).toEqual(START)
+    expect(walk.value.notes.join(' ')).not.toContain('the way back is not')
+    const outKm = -xOf(stops[1].coordinate)
+    const floorKm = xOf(stops[3].coordinate)
+    const km = walk.value.budget.distanceKm
+    expect(km.classification !== 'UNAVAILABLE' && km.value).toBeCloseTo(2 * outKm + 2 * floorKm, 2)
+    const total = walk.value.budget.totalMin
+    // At 2 km/h on the level, plus the samples: all of it within the settings.
+    expect(total.classification !== 'UNAVAILABLE' && total.value).toBeCloseTo((2 * outKm + 2 * floorKm) * 30 + walk.value.samples.length * 5, 0)
+    expect(total.classification !== 'UNAVAILABLE' && total.value).toBeLessThanOrEqual(DEFAULT_MISSION_SETTINGS.durationMin)
     const plan: WalkPlan = {
       goal: TRANSECT_GOAL,
       stops: walk.value.stops,
@@ -173,22 +185,24 @@ describe('the review of the transect', () => {
 
   it('between equals, takes the walk that samples one of the transect\'s named ends', () => {
     // A case that once failed: the rim side offers two unnamed units, the floor side the fan and the floor.
-    const units = [patch('Crater rim unit', -6, -4.5, -6, 6), patch('Upper etched unit', -4.5, -2, -6, 6), patch('Jezero fan 2 unit', -2, 4.5, -6, 6), patch('Jezero floor unit', 4.5, 8, -6, 6)]
-    const { walk } = walkOn(units, START)
+    const units = [patch('Crater rim unit', -6, -4.6, -6, 6), patch('Upper etched unit', -4.6, -2, -6, 6), patch('Jezero fan 2 unit', -2, 4, -6, 6), patch('Jezero floor unit', 4, 8, -6, 6)]
+    // 270 min and two samples: to the floor 4 km east and back fits; to the rim 4.6 km west and back does not.
+    // Either side then has two units and room for both samples, so the named end decides.
+    const { walk } = walkOn(units, START, settings({ durationMin: 270, samples: 2 }))
     if (walk.classification !== 'DERIVED') throw new Error('no walk')
     expect(walk.value.unitsCrossed).toContain('Jezero floor unit')
     expect(walk.value.unitsCrossed).toHaveLength(2)
     // And it does not first walk out over the fan and back, which it samples anyway.
-    expect(walk.value.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · Jezero floor unit'])
+    expect(walk.value.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · Jezero floor unit', RETURN_STOP_LABEL])
     expect(walk.value.notes.join(' ')).toContain('The walk does not go toward the rim first: the Crater rim unit, Upper etched unit that way do not fit the duration and the energy with the rest')
   })
 
   it('goes the whole way to the floor once the rim leg is left out', () => {
-    // A wall 0.5 km toward the rim; the floor end fits only without the way out and back.
+    // A wall 0.5 km toward the rim; the floor end and the way back from it fit only without the way out toward the rim and back.
     const units = [patch('Crater rim unit', -3, -2.5), patch('Jezero fan 2 unit', -2.5, 2), patch('Jezero floor unit', 2, 6)]
     const line = transectLine(START, units)
     if (line.classification !== 'DERIVED') throw new Error('no line')
-    for (const durationMin of [110, 124, 125]) {
+    for (const durationMin of [165, 190, 191]) {
       const walk = transectWalk(line.value, profileOf(line.value, (x) => (x < -0.5 ? -2500 + (-0.5 - x) * 1000 : -2500)), units, settings({ durationMin }))
       if (walk.classification !== 'DERIVED') throw new Error('no walk')
       expect(Math.max(...walk.value.path.map(xOf))).toBeCloseTo(xOf(line.value.path[2]), 2)
@@ -227,7 +241,9 @@ describe('the review of the transect', () => {
     const units = [patch('Crater rim unit', -1.7, -1.2), patch('Jezero fan 2 unit', -1.2, 1), patch('Upper etched unit', 1, 4.9), patch('Jezero floor unit', 4.9, 8)]
     const { walk } = walkOn(units, START, settings({ durationMin: 480, energyKcal: 2000 }))
     if (walk.classification !== 'DERIVED') throw new Error('no walk')
-    expect(walk.value.stops[walk.value.stops.length - 1].label).toContain('Jezero floor unit')
+    // The floor end is the last place visited; the walk then comes back.
+    expect(walk.value.stops[walk.value.stops.length - 2].label).toContain('Jezero floor unit')
+    expect(walk.value.stops[walk.value.stops.length - 1].label).toBe(RETURN_STOP_LABEL)
     expect(walk.value.unitsCrossed).not.toContain('Jezero floor unit')
     expect(walk.value.notes.join(' ')).toContain("No sample on the Jezero floor unit at the walk's end")
   })

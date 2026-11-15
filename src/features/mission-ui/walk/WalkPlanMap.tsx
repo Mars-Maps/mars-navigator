@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { ClassificationBadge } from '../../../components/ClassificationBadge'
 import { isAvailable, type WalkPlan } from '../../../domain'
+import { stopsPhrase } from './walkCardFigures'
 import { walkMapLayout } from './walkMap'
 
 const WIDTH = 320
@@ -30,7 +31,7 @@ export function WalkPlanMap({ plan }: { plan: WalkPlan }) {
   const barLeft = WIDTH - 10 - layout.scale.length
   const label = [
     // The start is not a numbered stop, as the panel and the marks say.
-    `Diagram of the planned walk, north up: the start and ${count(plan.stops.length - 1, 'stop', 'stops')}`,
+    `Diagram of the planned walk, north up: ${stopsPhrase(plan.stops)}`,
     count(slopes, 'slope flag', 'slope flags'),
     count(obstacles, 'mapped obstacle', 'mapped obstacles'),
     ...(unchecked > 0 ? [count(unchecked, 'leg not fully checked', 'legs not fully checked')] : []),

@@ -11,8 +11,8 @@ import {
 import type { PlaceName } from '../data/adapters/PlaceNamesAdapter'
 import type { ElevationProfile } from '../features/route-analysis/elevationProfile'
 import { surfaceDistanceKm } from '../features/route-analysis/routeDistance'
-import { ROVER_CHECK_GOAL, fitRoverCheck, roverCheckPath, roverCheckStops } from '../features/route-analysis/roverCheckWalk'
-import { DEFAULT_MAX_WALK_KM } from '../features/route-analysis/scienceGoals'
+import { ROVER_CHECK_GOAL, fitRoverCheck, roverCheckPath, roverCheckReturnPaths, roverCheckStops } from '../features/route-analysis/roverCheckWalk'
+import { DEFAULT_MAX_WALK_KM, returnStop } from '../features/route-analysis/scienceGoals'
 import { TRANSECT_GOAL, transectLine, type NamedCrater } from '../features/route-analysis/transectLine'
 import { confirmTransectSamples, confirmTransectStops, transectWalk } from '../features/route-analysis/transectWalk'
 import type { DraftWalk } from './planWalks'
@@ -82,12 +82,24 @@ export function walkDrafts(planner: WalkPlanner, sources: WalkDraftSources): Rec
         .catch((e: unknown) => unavailable<never>(e instanceof Error ? e.message : String(e)))
       const candidate = roverCheckStops(start, traverse, settings)
       if (candidate.classification === 'UNAVAILABLE') return candidate
-      const profile = await sources.profile(roverCheckPath(candidate.value), signal)
+      // The way out, and the way back from each waypoint: which one is last is settled by the fit.
+      const [profile, ...returns] = await Promise.all([
+        sources.profile(roverCheckPath(candidate.value), signal),
+        ...roverCheckReturnPaths(candidate.value).map((path) => sources.profile(path, signal)),
+      ])
       if (profile.classification === 'UNAVAILABLE') return unavailable(`The heights to the waypoints could not be read: ${profile.reason}`)
-      const walk = fitRoverCheck(candidate.value, profile.value, settings)
+      // A way back that could not be read is not known, never free: the fit stops before that waypoint.
+      const walk = fitRoverCheck(
+        candidate.value,
+        profile.value,
+        settings,
+        returns.map((r) => (r.classification === 'UNAVAILABLE' ? null : r.value)),
+      )
       if (walk.classification === 'UNAVAILABLE') return walk
-      const reads = await unitsAt(walk.value.path, signal)
-      const stops: WalkStop[] = walk.value.path.map((coordinate, i) => {
+      // The path ends back at the start: its last point is the walk's closing stop, not a waypoint.
+      const outward = walk.value.path.slice(0, -1)
+      const reads = await unitsAt(outward, signal)
+      const visited: WalkStop[] = outward.map((coordinate, i) => {
         const waypoint = i === 0 ? null : walk.value.stops[i - 1]
         return {
           id: `${ROVER_CHECK_GOAL.id}-${i + 1}`,
@@ -102,6 +114,7 @@ export function walkDrafts(planner: WalkPlanner, sources: WalkDraftSources): Rec
             : derived('Where the walk starts', 'The start chosen in the app; not picked by the planner'),
         }
       })
+      const stops = [...visited, returnStop(ROVER_CHECK_GOAL, visited.length + 1, visited[0])]
       const { cut } = walk.value
       const left = `${cut.count} more waypoint${cut.count === 1 ? ' was' : 's were'} left off`
       const notes =
@@ -109,7 +122,7 @@ export function walkDrafts(planner: WalkPlanner, sources: WalkDraftSources): Rec
           ? []
           : cut.unchecked
             ? [`${left}: the walk to the next could not be checked (${cut.unchecked.limits.join(', ')} not known): ${cut.unchecked.reason}.`]
-            : [`${left}: the next would break the ${cut.limit ?? 'settings'} limit.`]
+            : [`${left}: the walk to the next and back would break the ${cut.limit ?? 'settings'} limit.`]
       return derived({ goal: ROVER_CHECK_GOAL, stops, samples: walk.value.samples, notes }, methodOf(walk))
     },
   }

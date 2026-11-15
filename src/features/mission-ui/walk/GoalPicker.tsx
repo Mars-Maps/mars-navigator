@@ -20,7 +20,7 @@ import { LegDetail } from './LegDetail'
 import { MissionSettingsStep } from './MissionSettingsStep'
 import { settingsValid, type MissionSettings } from './missionSettings'
 import { WalkCards } from './WalkCards'
-import type { WalkOption } from './walkCardFigures'
+import { stopsPhrase, type WalkOption } from './walkCardFigures'
 import { WalkPlanMap } from './WalkPlanMap'
 import { WALK_STEPS, minimisedLegendMethod, stepOpen, type WalkStep } from './walkSteps'
 
@@ -203,8 +203,7 @@ function PlanSummary({ plan, canStand, onStand }: { plan: WalkPlan; canStand: bo
       <p className="flex items-center gap-1.5 text-caption text-ink-subtle">
         <span>
           {/* The start is not a numbered stop: "the start and 3 stops" for Start, Stop 1–3. */}
-          Planned: <span className="text-ink">{plan.goal.label}</span>, the start and{' '}
-          {plan.stops.length - 1 === 1 ? '1 stop' : `${plan.stops.length - 1} stops`}
+          Planned: <span className="text-ink">{plan.goal.label}</span>, {stopsPhrase(plan.stops)}
         </span>
         <ClassificationBadge classification={plan.goal.reason.classification} detail={detailOf(plan.goal)} />
       </p>

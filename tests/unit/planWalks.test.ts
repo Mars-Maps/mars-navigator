@@ -265,3 +265,30 @@ describe('slopeLimitOf', () => {
     expect(own.source).toContain(SUITED_SLOPE_LIMIT.source)
   })
 })
+
+describe('planWalks: a walk that returns must return within the settings', () => {
+  /** Out east to 1, 2 and 3 km and back to the landing site: 6 km in all. */
+  const outAndBack: DraftWalk = async (start) =>
+    derived(
+      { goal: FLOOR, stops: [stop('s0', start), stop('s1', at(1)), stop('s2', at(2)), stop('s3', at(3)), stop('back', start)] },
+      'fixture',
+    )
+
+  it('leaves the farthest stop off when the whole walk, way back included, is over the time', async () => {
+    // 6 km is 180 min of walking, over 160; without the farthest stop it is 4 km, 120 min, and the samples fit too.
+    const [walk] = plannedWalks(await run(planner({ 'flat-bedrock': outAndBack }), { ...DEFAULT_MISSION_SETTINGS, durationMin: 160 }))
+    expect(walk.plan.stops.map((s) => s.id)).toEqual(['s0', 's1', 's2', 'back'])
+    expect(walk.plan.legs).toHaveLength(3)
+    expect(walk.plan.legs[2].toStopId).toBe('back')
+    expect(walk.fit.fits).toBe(true)
+    expect(walk.budget.totalMin).toMatchObject({ classification: 'DERIVED' })
+    expect(walk.samplesNote).toContain('1 stop was left off')
+  })
+
+  it('keeps every stop when the walk and the way back fit', async () => {
+    const [walk] = plannedWalks(await run(planner({ 'flat-bedrock': outAndBack })))
+    expect(walk.plan.stops.map((s) => s.id)).toEqual(['s0', 's1', 's2', 's3', 'back'])
+    expect(walk.fit.fits).toBe(true)
+    expect(walk.samplesNote ?? '').not.toContain('left off')
+  })
+})

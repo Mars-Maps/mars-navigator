@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_MISSION_SETTINGS, derived, official, unavailable, walkPlanProblem, type GeologicUnit, type GeologicUnitArea, type WalkPlan } from '../../src/domain'
 import { SAMPLE_INSET_KM, TRANSECT_COMPOSITION, TRANSECT_GOAL, TRANSECT_REASONS, isOwnRim, transectLine, type NamedCrater } from '../../src/features/route-analysis/transectLine'
 import { confirmTransectSamples, transectWalk } from '../../src/features/route-analysis/transectWalk'
+import { RETURN_STOP_LABEL } from '../../src/features/route-analysis/scienceGoals'
 import { START, at, xOf, MAP, unit, UNITS, CONTACTS, NEAREST_NOTE, settings, lineOf, profileOf, walkOf } from '../fixtures/transect'
 
 describe('the transect line', () => {
@@ -68,7 +69,10 @@ describe('the transect walk', () => {
 
   it('makes a plan the walk contract accepts, with straight legs between its stops', () => {
     const walk = walkOf(lineOf(at(-1, 0)))
-    expect(walk.stops.length).toBe(4)
+    // The landing site, the rim-side end, the landing site passed again, the floor end, and back to the landing site.
+    expect(walk.stops.length).toBe(5)
+    expect(walk.stops[4].label).toBe(RETURN_STOP_LABEL)
+    expect(walk.stops[4].coordinate).toEqual(walk.stops[0].coordinate)
     const plan: WalkPlan = {
       goal: TRANSECT_GOAL,
       stops: walk.stops,
