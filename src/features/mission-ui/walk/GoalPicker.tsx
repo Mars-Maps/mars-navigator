@@ -24,6 +24,16 @@ import type { WalkOption } from './walkCardFigures'
 import { WalkPlanMap } from './WalkPlanMap'
 import { WALK_STEPS, minimisedLegendMethod, stepOpen, type WalkStep } from './walkSteps'
 
+/**
+ * Step 3 is the tall one (three cards, the map, every leg) and is read
+ * beside the walk drawn on the globe, so it moves out of the middle: to the
+ * right, 5 rem from the edge (clear of the icon column), and up over the
+ * walker widget in that corner. The dock's slot is 24 rem wide and centred,
+ * so the shift is half the window less half the panel and the gap; never to
+ * the left on a narrow window. Shorter by the lift, so its top stays under the time bar.
+ */
+const WALKS_AT_THE_RIGHT = 'max-h-[calc(100vh-15rem)] translate-x-[max(0px,calc(50vw-17rem))] -translate-y-16'
+
 /** Where the shell's planning is: nothing asked yet, working, or why it could not plan. */
 export type PlanStatus = { kind: 'idle' } | { kind: 'planning' } | { kind: 'failed'; reason: string }
 
@@ -118,7 +128,11 @@ export function GoalPickerView({
 
   // No ×: the dock's button closes a tool's panel.
   return (
-    <Panel surface="glass" compact={minimized} className="max-h-[calc(100vh-10rem)] w-full overflow-y-auto">
+    <Panel
+      surface="glass"
+      compact={minimized}
+      className={`w-full overflow-y-auto ${step === 'walks' && !minimized ? WALKS_AT_THE_RIGHT : 'max-h-[calc(100vh-10rem)]'}`}
+    >
       <PanelHeader title="Plan a walk" minimized={minimized} onToggleMinimized={onToggle} bodyId={bodyId} spacing="mb-3">
         <h2 className="text-heading font-semibold text-ink">Plan a walk</h2>
       </PanelHeader>
