@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { ClassificationBadge } from '../../../components/ClassificationBadge'
+import { ClassificationBadge, InfoMark } from '../../../components/ClassificationBadge'
 import {
   DEFAULT_MISSION_SETTINGS,
   SAMPLE_MINUTES,
@@ -10,10 +10,16 @@ import {
   type MissionSettings,
 } from './missionSettings'
 
+/** "5° to 30°. Default 20°: lunar xEVA figure, not a Mars requirement": a slider's range and where its default comes from. */
+function settingNote(spec: (typeof SETTING_SPECS)[number]): string {
+  const sample = spec.key === 'samples' ? `, as is ${SAMPLE_MINUTES} min per sample` : ''
+  return `${formatSetting(spec.key, spec.min)} to ${formatSetting(spec.key, spec.max)}. Default ${formatSetting(spec.key, spec.default)}: ${spec.basis}${sample}`
+}
+
 /**
  * Step 2 of Plan a walk: the mission's limits as four sliders, each
- * with its value, its range and where its default comes from, a citation or
- * the words "project choice". Renders from props; the shell holds the
+ * with its value. Its range and where its default comes from, a citation or
+ * the words "project choice", are in the mark beside its name. Renders from props; the shell holds the
  * settings and hands them to the planner.
  */
 export function MissionSettingsStep({
@@ -35,9 +41,17 @@ export function MissionSettingsStep({
         return (
           <div key={spec.key}>
             <div className="mb-1 flex items-baseline justify-between">
-              <label htmlFor={`${id}-${spec.key}`} className="text-micro uppercase text-ink-subtle">
-                {spec.label}
-              </label>
+              <span className="inline-flex items-center gap-1.5">
+                <label htmlFor={`${id}-${spec.key}`} className="text-micro uppercase text-ink-subtle">
+                  {spec.label}
+                </label>
+                {/* The range, the default and where it comes from: in the mark, not under every slider. */}
+                {spec.source ? (
+                  <ClassificationBadge classification="OFFICIAL" detail={`${settingNote(spec)}. ${spec.source}`} />
+                ) : (
+                  <InfoMark detail={settingNote(spec)} />
+                )}
+              </span>
               <span className="text-caption tabular-nums text-ink">{formatSetting(spec.key, value)}</span>
             </div>
             <input
@@ -53,13 +67,9 @@ export function MissionSettingsStep({
               onChange={(e) => onChange(withSetting(settings, spec.key, Number(e.target.value)))}
               className="w-full accent-accent"
             />
-            <p id={`${id}-${spec.key}-note`} className="flex items-start gap-1.5 text-caption text-ink-muted">
-              <span>
-                {formatSetting(spec.key, spec.min)} to {formatSetting(spec.key, spec.max)}. Default{' '}
-                {formatSetting(spec.key, spec.default)}: {spec.basis}
-                {spec.key === 'samples' && `, as is ${SAMPLE_MINUTES} min per sample`}
-              </span>
-              {spec.source && <ClassificationBadge classification="OFFICIAL" detail={spec.source} />}
+            {/* For the slider's description only: the same words as the mark. */}
+            <p id={`${id}-${spec.key}-note`} className="sr-only">
+              {settingNote(spec)}
             </p>
             {/* Tied to the slider, not an alert: its words change on every step of a drag. */}
             {problem && (

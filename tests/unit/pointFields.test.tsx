@@ -13,6 +13,7 @@ import {
   describePoint,
 } from '../../src/features/mission-ui/pointFields'
 import { distanceAndBearing } from '../../src/features/route-analysis/distanceAndBearing'
+import { shownMarkup } from './methodology.helpers'
 
 const POINT: MarsCoordinate = { latitude: 10, longitudeEast: 20 }
 const DEPARTURE: MarsCoordinate = { latitude: 0, longitudeEast: 0 }
@@ -129,7 +130,8 @@ describe('PointMenuView', () => {
     expect(html).toMatch(/No global surface radiation map exists/)
     // Six unavailable values, each with its badge, in the list and in the pager:
     // elevation, slope, temperature, the dose and the atmosphere overhead, the unit.
-    const [list, pager] = html.split('role="group"')
+    // Counted on what is on show: the radiation methodology also spells the word out.
+    const [list, pager] = shownMarkup(html).split('role="group"')
     expect(list.match(/UNAVAILABLE/g)).toHaveLength(6)
     expect(pager.match(/UNAVAILABLE/g)).toHaveLength(6)
   })

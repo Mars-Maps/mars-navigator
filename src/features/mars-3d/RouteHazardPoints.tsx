@@ -90,9 +90,10 @@ function createHazardMaterial(): ShaderMaterial {
 
 /**
  * The followed route's hazards as red points on its line: one point
- * per hazard that was found, at the hazard's own coordinate: for a stretch
- * under the radiation line its highest place, for what the map marks the
- * place of the mark (a crater's own, up to 100 m beside the line).
+ * per hazard that was found, at the hazard's own coordinate: for a run of
+ * steep ground the middle of its steepest stretch, for a stretch under the
+ * radiation line its highest place, for what the map marks the place of the
+ * mark (a crater's own, up to 100 m beside the line).
  * DERIVED, as the Hazards panel's row for it. A route not yet scanned, a
  * kind that was not scanned and ground that was not checked draw nothing;
  * the panel says those in words.

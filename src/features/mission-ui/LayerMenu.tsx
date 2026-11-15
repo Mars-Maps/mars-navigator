@@ -195,11 +195,11 @@ function LayerLegend({
 }) {
   if (legend.kind === 'none') {
     return (
-      <>
-        <p className="text-body text-ink-muted">No official legend</p>
-        {/* Reasons cite URLs, which must wrap inside the narrow menu. */}
-        <p className="mt-1 text-caption break-words text-ink-subtle">{legend.reason}</p>
-      </>
+      // Why not is a sentence or two, sometimes with a URL: in the mark, not the narrow menu.
+      <p className="flex items-center gap-1.5 text-body text-ink-muted">
+        No official legend
+        <ClassificationBadge classification="UNAVAILABLE" detail={legend.reason} />
+      </p>
     )
   }
   if (legend.kind === 'ramp') return <LayerLegendRamp legend={legend} />

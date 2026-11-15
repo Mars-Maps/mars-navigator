@@ -68,8 +68,8 @@ function samePoint(a: MarsCoordinate, b: MarsCoordinate): boolean {
 
 /**
  * What the search kept off this route's path, by hazard kind, in the
- * method's own words: for the hazards panel, where a kind with no
- * detector would otherwise read only "not scanned". Empty for a route that
+ * method's own words: for the hazards panel, beside what the scans of the
+ * path found. Empty for a route that
  * was not searched (shortest, or a search that found no path); no
  * `mapped-obstacle` entry where the map was not read for every leg, since
  * then the lines were not kept off. It says what was avoided, never that
@@ -173,13 +173,32 @@ function searchedOption(
       })
     })
   })
+  // Every node the path walks, not only its turns: a hazard scan of the turns alone would
+  // average a straight run into one stretch and miss steep ground inside it.
+  // A stop between two legs is kept twice, once with each leg's height for it: each leg gives
+  // the stop the height of its own nearest node, on its own lattice, and the two can differ.
+  // With one of them dropped, the few metres from the stop to the next leg's first node would
+  // carry that difference and read as a slope no ground has. Twice, the pair has no length,
+  // which a scan passes over, and each leg's join to the stop stays level as the search walked it.
+  const walked: SurfacePoint[] = []
+  legs.forEach((leg) => {
+    leg.walked.forEach((node) => {
+      walked.push({
+        id: `${strategy}-w${walked.length}`,
+        coordinate: node.coordinate,
+        elevationMeters: official(node.heightM, leg.models[node.model].source),
+      })
+    })
+  })
   const steps = legs.flatMap((leg) => leg.steps)
   const distanceKm = steps.reduce((sum, step) => sum + step.km, 0)
   const hours = steps.reduce((sum, step) => sum + step.km / suitedWalkingKmh(step.s), 0)
   const kcal = steps.reduce((sum, step) => sum + step.km * walkingKcalPerKm(step.s), 0)
   const unchecked = legs.flatMap((leg, l) => (leg.obstacles.checked ? [] : [`leg ${numbers[l]}: ${leg.obstacles.reason}`]))
   const mapped = mappedObstacleScan?.(strategy, legs, numbers) ?? null
-  const scan = scanHazards(path, { ...HAZARD_DETECTORS, 'mapped-obstacle': mapped ? mapped.detector : SCAN_NOT_LOADED })
+  // Along every walked node, not the path's turns: the slope scan would average a straight run away
+  // (the mapped-obstacle detector goes by the legs it was made from, not by these points).
+  const scan = scanHazards(walked, { ...HAZARD_DETECTORS, 'mapped-obstacle': mapped ? mapped.detector : SCAN_NOT_LOADED })
   const gaps = mapped?.gaps ?? []
   const partly = gaps.length > 0 && scan.scanned.includes('mapped-obstacle')
   const obstacles =
@@ -203,7 +222,7 @@ function searchedOption(
       durationHours: derived(hours, `Sum over the path's steps of length over walking speed. ${WALKING_SPEED_METHOD}`),
       metabolicEnergyKcal: derived(kcal, `Sum over the path's steps of length times the cost of walking its slope. ${METABOLIC_COST_METHOD}`),
     },
-    // The path's nodes carry heights, so the shielding scan runs along it; `points` have none.
+    // The walked nodes carry heights, so the slope and shielding scans run along every step; `points` have none.
     // What the map marks is scanned along each leg's own path, with the features its search read.
     hazards: scan.hazards,
     // A kind scanned over part of the route is not "scanned": the panel says which part was not.

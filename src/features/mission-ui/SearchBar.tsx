@@ -6,6 +6,11 @@ import { RouteFieldActions, RoutePickNotice } from './RouteFieldActions'
 import { searchBarEscape } from './searchBarEscape'
 import { DragHandle, DropLine } from './StopDrag'
 import { useStopDrag } from './stopReorder'
+import { InfoMark } from '../../components/ClassificationBadge'
+
+/** How the coordinate fields are filled, for the mark beside their one-line key. */
+export const COORDINATE_HELP =
+  'X is the longitude, 0–360 °E; Y is the latitude, −90 to 90. Paste a copied point (4.6°S 137.4°E) or "lat, lon" into either field to fill both.'
 
 /**
  * Top-left route search: collapsed to one line and the departure's X and Y,
@@ -226,10 +231,9 @@ function EditableSearchBar({ onPlan }: SearchBarProps) {
         hidden={!expanded}
         className="max-h-[23rem] min-h-0 scroll-py-3 overflow-y-auto border-t border-line/60 px-4 pb-4 pt-3"
       >
-        <p className="mb-3 text-caption text-ink-subtle">
-          X is the longitude, 0–360 °E; Y is the latitude, −90 to 90. Paste a
-          copied point (4.6°S 137.4°E) or "lat, lon" into either field to fill
-          both.
+        <p className="mb-3 flex items-center gap-1.5 text-caption text-ink-subtle">
+          X longitude °E · Y latitude
+          <InfoMark detail={COORDINATE_HELP} />
         </p>
 
         <ol className="flex flex-col gap-2">

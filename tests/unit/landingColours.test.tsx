@@ -25,6 +25,7 @@ import {
 } from '../../src/features/route-analysis/landingLattice'
 import { useLandingColours } from '../../src/state'
 import { SIM_3464_UNIT_NAMES } from '../fixtures/sim3464UnitNames'
+import { methodologyText, visibleText } from './methodology.helpers'
 
 // Test fixtures only: an invented box and invented polygons, never shown in the app.
 const BOX: SiteBounds = { west: 77, east: 78, south: 18, north: 19 }
@@ -188,19 +189,23 @@ describe('the rating at the landing site', () => {
 })
 
 describe('LandingLegend', () => {
-  it('names the three colours with the rating’s own rules, what has no colour, and that it is not a safety statement', () => {
+  it('names the three colours with the rating’s own rules; the rest is behind the Methodology button', () => {
     const html = renderToStaticMarkup(<LandingLegend colours={{ status: 'ready', method: 'fixture method' }} />)
-    for (const rule of [LANDING_LEGEND.green, LANDING_LEGEND.yellow, LANDING_LEGEND.red, LANDING_LEGEND.note]) expect(html).toContain(rule)
+    for (const rule of [LANDING_LEGEND.green, LANDING_LEGEND.yellow, LANDING_LEGEND.red]) expect(visibleText(html)).toContain(rule)
     for (const name of ['Green', 'Yellow', 'Red', 'No colour']) expect(html).toContain(`>${name}</span>`)
-    expect(html).toContain('not a statement that a landing is safe')
-    expect(html).toContain('project choices')
-    expect(html).toContain('<span class="sr-only">DERIVED</span>')
-    expect(html).toContain('fixture method')
+    expect(html.match(/data-methodology=""/g)).toHaveLength(1)
+    // On show: four short rows and nothing else.
+    expect(visibleText(html)).not.toContain('project choices')
+    const more = methodologyText(html)
+    expect(more).toContain(LANDING_LEGEND.note)
+    expect(more).toContain('not a statement that a landing is safe')
+    expect(more).toContain(LANDING_LEGEND.unavailable)
+    expect(more).toContain('fixture method')
   })
 
-  it('says in a line on show what inside the crater means, since yellow covers flat ground inside the rim too', () => {
+  it('says in the methodology what inside the crater means, since yellow covers flat ground inside the rim too', () => {
     const html = renderToStaticMarkup(<LandingLegend colours={{ status: 'ready', method: 'fixture method' }} />)
-    expect(html).toContain(CRATER_INTERIOR_LEGEND)
+    expect(methodologyText(html)).toContain(CRATER_INTERIOR_LEGEND)
     expect(CRATER_INTERIOR_LEGEND).toContain('Other ground inside the rim counts as outside')
   })
 

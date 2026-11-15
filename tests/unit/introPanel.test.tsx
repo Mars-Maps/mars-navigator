@@ -69,7 +69,9 @@ describe('IntroPanelView', () => {
     expect(html).toContain('src="https://fixture.invalid/tile.jpg"')
     expect(html).toContain('alt="Fixture mosaic, one map tile"')
     expect(html).toContain('title="fixture-layer-source · fixture-licence"')
-    expect(html).toContain('one Mars Trek map tile, cropped round; not a photo of the globe.')
+    expect(html).toContain('Picture: one map tile, not a photo of the globe')
+    // Where the tile is from is in the mark, with the layer's caveat.
+    expect(html).toContain('One Mars Trek map tile, cropped round.')
     expect(html).toContain('fixture caveat')
   })
 
@@ -95,9 +97,11 @@ describe('IntroPanelView site', () => {
       />,
     )
 
-  it('names the site and its mission, with the source on the line, and offers to go there', () => {
+  it('names the site, with its mission and source in the mark beside it, and offers to go there', () => {
     const html = renderSite(null, () => undefined)
-    expect(html).toContain('Fixture crater · the Mars 2020 landing site. Fixture mission line.')
+    expect(html).toContain('>Fixture crater · the Mars 2020 landing site</span>')
+    // A hover mark, not a paragraph and not a button: a click here leaves the welcome screen.
+    expect(html).toContain('<span class="sr-only">Fixture mission line. fixture-site-source</span>')
     expect(html).toContain('title="fixture-site-source"')
     expect(html).toContain('>Go to Fixture crater</button>')
     expect(html).not.toContain('Landing ellipse not shown')

@@ -97,6 +97,12 @@ export interface SearchStep {
 export interface SearchedLeg {
   /** The departure, the lattice nodes where the path turns, the destination. */
   nodes: SearchNode[]
+  /**
+   * The departure, every lattice node of the path in order, the destination:
+   * the ends of `steps`. For what must look at each step (the hazard scans),
+   * where `nodes` would average a straight run into one stretch.
+   */
+  walked: SearchNode[]
   /** Every step in order: the join from the departure, each lattice step, the join to the destination. */
   steps: readonly SearchStep[]
   /** Along the ground, every lattice step and the two short joins to the stops, km: the sum of `steps`. */
@@ -313,6 +319,7 @@ export async function searchLeg(
   })
   const turns = chain.filter((k, s) => s === 0 || s === chain.length - 1 || heading(L, chain[s - 1], k) !== heading(L, k, chain[s + 1]))
   const nodes = [node(start, { ...from }), ...turns.map((k) => node(k)), node(goal, { ...to })]
+  const walked = [node(start, { ...from }), ...chain.map((k) => node(k)), node(goal, { ...to })]
   const obstacles: SearchedLeg['obstacles'] =
     map.classification === 'UNAVAILABLE' ? { checked: false, reason: map.reason } : { checked: true, features: map.value }
   const spacing =
@@ -321,11 +328,11 @@ export async function searchLeg(
       : `every ${every} model cells (${describeKm(L.cy)} north–south, ${describeKm(L.cx)} east–west at this latitude; the leg is too long for a finer search), so a slope is a mean over that and steeper ground shorter than it is not seen`
   const detour = Math.round((worstDetour(L.cx, L.cy) - 1) * 100)
   const method = `A* search over an 8-connected lattice of nearest-cell heights ${spacing}, ${L.nx} by ${L.ny} nodes round the leg, in a plane tangent at the leg's midpoint; each step's length includes its rise, and each stop is joined on the level to its nearest node, whose height it is given. The lattice walks eight headings only, so on a heading between them the path zig-zags and is up to about ${detour}% longer than the straight line; the figures are of the lattice path`
-  return derived({ nodes, steps, distanceKm, cost, models, spacingKm: L.cy, obstacles, method }, method)
+  return derived({ nodes, walked, steps, distanceKm, cost, models, spacingKm: L.cy, obstacles, method }, method)
 }
 
 /** The leg's midpoint, the longitude wrapped so a leg across 0/360°E has it between the ends. */
-function midpoint(from: MarsCoordinate, to: MarsCoordinate): MarsCoordinate {
+export function midpoint(from: MarsCoordinate, to: MarsCoordinate): MarsCoordinate {
   const dLon = ((((to.longitudeEast - from.longitudeEast) % 360) + 540) % 360) - 180
   return { latitude: (from.latitude + to.latitude) / 2, longitudeEast: (((from.longitudeEast + dLon / 2) % 360) + 360) % 360 }
 }

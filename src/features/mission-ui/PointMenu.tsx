@@ -18,6 +18,7 @@ import { ClassifiedValue } from './ClassifiedValue'
 import { stepPage } from './pageStep'
 import { describePoint, type PointFields } from './pointFields'
 import { formatSlope } from './slopeLimit'
+import { SteepSlopeWarning } from './SteepSlopeWarning'
 import { RadiationField } from './radiation/RadiationWarning'
 import { TemperatureField } from './temperature/TemperatureField'
 import type { TemperatureInputs } from './temperature/temperatureMath'
@@ -40,8 +41,8 @@ import type { TemperatureInputs } from './temperature/temperatureMath'
  * measurements; without them the field stays UNAVAILABLE.
  *
  * `radiationReference` is the one surface measurement, passed in by
- * the shell because it lives in src/data. It is shown under the radiation
- * field's dose, which stays UNAVAILABLE at every point.
+ * the shell because it lives in src/data. It is in the radiation field's
+ * methodology; the dose itself stays UNAVAILABLE at every point.
  *
  * `radiationShielding` is the atmosphere overhead against Gale. The
  * shell hands it in for the selected point, since the elevation behind it
@@ -184,7 +185,12 @@ const ROWS: readonly { label: string; render: (fields: PointFields, context: Row
   {
     // Right after the height it is worked out from; in the stop card's words and bands.
     label: 'Slope',
-    render: (f) => <ClassifiedValue value={f.slope} format={formatSlope} />,
+    render: (f) => (
+      <span className="flex flex-col gap-0.5">
+        <ClassifiedValue value={f.slope} format={formatSlope} />
+        <SteepSlopeWarning slope={f.slope} />
+      </span>
+    ),
   },
   {
     label: 'Distance from departure',
@@ -207,7 +213,7 @@ const ROWS: readonly { label: string; render: (fields: PointFields, context: Row
 ]
 
 /**
- * The one measurement, as a reference under the UNAVAILABLE field:
+ * The one measurement, as a reference in the field's methodology:
  * its value with the stated uncertainty, where, when and under what solar
  * conditions it was taken. The badge carries the citation. The absorbed
  * dose is given too, since the dose equivalent is derived from it by the
@@ -218,13 +224,14 @@ const formatElevationKm = (km: number) => `${km < 0 ? '−' : ''}${Math.abs(km)}
 
 function RadiationReferenceLine({ reference }: { reference: RadiationReference }) {
   return (
-    <p data-radiation-reference className="mt-1 text-caption text-ink-subtle">
+    <span data-radiation-reference className="block">
       Measured at {reference.site} ({reference.instrument}, {formatElevationKm(reference.elevationKm)} km,{' '}
       {reference.period},{' '}
       {reference.conditions}):{' '}
       <ClassifiedValue value={reference.doseEquivalent} format={(m) => formatMeasuredValue(m, 2)} />{' '}
       <ClassifiedValue value={reference.absorbedDose} format={(m) => `(${formatMeasuredValue(m, 3)})`} />
-    </p>
+      <span className="block">Not scaled to this point.</span>
+    </span>
   )
 }
 

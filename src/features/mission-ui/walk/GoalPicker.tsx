@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ClassificationBadge } from '../../../components/ClassificationBadge'
+import { Methodology, MethodologyItem } from '../../../components/Methodology'
 import { Panel } from '../../../components/Panel'
 import { PanelHeader } from '../../../components/PanelHeader'
 import { useMinimized } from '../../../components/useMinimized'
@@ -278,20 +279,27 @@ function PlanSummary({
         From <span className="tabular-nums text-ink">{formatMarsCoordinate(plan.stops[0].coordinate, 3)}</span>
       </p>
       <WalkPlanMap plan={plan} />
-      <p className="flex items-start gap-1.5 text-caption text-ink-muted">
+      <p className="flex flex-wrap items-center gap-1.5 text-caption text-ink-muted">
         <span>
-          Slope limit {plan.slopeLimit.deg}°: {plan.slopeLimit.label}
+          Slope limit <span className="tabular-nums text-ink">{plan.slopeLimit.deg}°</span>
         </span>
         {/* Cited only at the suited figure; another value is the settings' own. */}
         {isCitedSlopeLimit(plan.slopeLimit) && (
-          <ClassificationBadge classification="OFFICIAL" detail={plan.slopeLimit.source} />
+          <ClassificationBadge classification="OFFICIAL" detail={`${plan.slopeLimit.label}. ${plan.slopeLimit.source}`} />
         )}
-      </p>
-      <p className="text-caption text-ink-muted">
-        Slopes are measured over a few metres to 100 m or more, depending on the elevation model and the leg&rsquo;s length, so a flag means look here, not impassable.
-      </p>
-      <p className="text-caption text-ink-muted">
-        Each leg is a straight line between its stops. It flags steep ground and mapped obstacles on the way; it does not go around them.
+        <Methodology title="How the walk is checked">
+          <MethodologyItem heading="Slope limit">
+            {plan.slopeLimit.deg}°: {plan.slopeLimit.label}. {plan.slopeLimit.source}.
+          </MethodologyItem>
+          <MethodologyItem heading="Slopes">
+            Slopes are measured over a few metres to 100 m or more, depending on the elevation model and the leg&rsquo;s
+            length, so a flag means look here, not impassable.
+          </MethodologyItem>
+          <MethodologyItem heading="Legs">
+            Each leg is a straight line between its stops. It flags steep ground and mapped obstacles on the way; it does
+            not go around them.
+          </MethodologyItem>
+        </Methodology>
       </p>
       {/* The plan's next step, so the panel's highlighted button, as End
           navigation is: across the panel, accent, a little taller than the text

@@ -90,7 +90,9 @@ describe('MissionSettingsStep', () => {
     const html = render()
     expect(html).toContain('Default 20°: lunar xEVA figure, not a Mars requirement')
     expect(html).toContain('EVA-EXP-0075')
-    expect(html.match(/: project choice/g)).toHaveLength(3)
+    // Each slider's words twice: in the mark beside its name, and for the slider's own description.
+    expect(html.match(/: project choice/g)).toHaveLength(6)
+    expect(html.match(/<p id="[^"]*-note" class="sr-only">/g)).toHaveLength(4)
     expect(html).toContain('Default 6: project choice, as is 5 min per sample')
     // One citation, so one mark: a project choice is not a classified value.
     expect(html.match(/<span class="sr-only">OFFICIAL<\/span>/g)).toHaveLength(1)

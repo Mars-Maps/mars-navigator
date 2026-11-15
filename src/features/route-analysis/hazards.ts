@@ -12,6 +12,7 @@ import {
 import { legShieldingHazards } from './atmosphericShielding'
 import type { ProfilePoint } from './elevationProfile'
 import { surfaceDistanceKm } from './routeDistance'
+import { routeSlopeHazards } from './slopeHazard'
 
 /**
  * Scans a route for one kind of hazard to a human on the surface.
@@ -77,14 +78,22 @@ export const radiationDetector: HazardDetector = {
   },
 }
 
+/**
+ * Steep slope along a route's points: each stretch between
+ * neighbouring points with heights, by the one steep slope rule the point
+ * menu uses. With no stretch measured the scan is UNAVAILABLE.
+ */
+export const slopeDetector: HazardDetector = {
+  kind: 'slope',
+  requires: ["Heights on the route's points, from the elevation chain"],
+  ready: true,
+  detect: routeSlopeHazards,
+}
+
 /** One detector per HazardKind. A Record so a new kind fails to compile until added. */
 export const HAZARD_DETECTORS: Record<HazardKind, HazardDetector> = {
-  // TODO: needs elevation/slope samples along the route and a cited
-  // safe-slope limit for a walking human.
-  slope: stub('slope', [
-    'Elevation or slope samples along the route',
-    'A cited safe-slope limit for a walking human',
-  ]),
+  // The steep slope rule on the stretches between the route's points.
+  slope: slopeDetector,
   // TODO: needs high-resolution elevation and a cited drop-height threshold.
   'sudden-drop': stub('sudden-drop', [
     'High-resolution elevation along the route',

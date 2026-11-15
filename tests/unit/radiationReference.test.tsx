@@ -9,6 +9,7 @@ import { JEZERO } from '../../src/data/sites/sites'
 import { formatMeasuredValue, isAvailable, type MarsCoordinate } from '../../src/domain'
 import { PointMenuView } from '../../src/features/mission-ui/PointMenu'
 import { describePoint } from '../../src/features/mission-ui/pointFields'
+import { methodologyText, shownMarkup, visibleText } from './methodology.helpers'
 
 const GALE: MarsCoordinate = { latitude: -4.59, longitudeEast: 137.44 }
 
@@ -73,7 +74,7 @@ describe('PointMenuView radiation reference', () => {
   const render = (reference = GALE_RAD_REFERENCE) =>
     renderToStaticMarkup(<PointMenuView point={JEZERO.centre} departure={GALE} radiationReference={reference} />)
 
-  it('shows the value, its uncertainty, place, dates, conditions and citation under the UNAVAILABLE field', () => {
+  it('gives the value, its uncertainty, place, dates, conditions and citation in the field’s methodology, not in the menu', () => {
     const html = render()
     expect(html).toContain('0.64 ± 0.12 mSv/day')
     expect(html).toContain('(0.210 ± 0.040 mGy/day)')
@@ -85,8 +86,12 @@ describe('PointMenuView radiation reference', () => {
     expect(list.match(/data-radiation-reference/g)).toHaveLength(1)
     expect(pager.match(/data-radiation-reference/g)).toHaveLength(1)
     // Six: elevation, slope, temperature, the dose, the atmosphere overhead, the unit.
-    expect(list.match(/UNAVAILABLE/g)).toHaveLength(6)
-    expect(html).toMatch(/not scaled to this point/)
+    expect(shownMarkup(list).match(/UNAVAILABLE/g)).toHaveLength(6)
+    expect(html).toMatch(/not scaled to this point/i)
+    // One click away: nothing of the measurement takes room in the menu itself.
+    expect(shownMarkup(html)).not.toContain('data-radiation-reference')
+    expect(visibleText(html)).not.toMatch(/mSv|mGy|Measured at Gale/)
+    expect(methodologyText(html)).toContain('0.64 ± 0.12 mSv/day')
   })
 
   it('shows no reference, and no number with a radiation unit, when none is passed', () => {

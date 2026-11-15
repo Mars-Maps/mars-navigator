@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import {
   RADIATION_LEVEL_BASIS,
   RADIATION_LEVEL_TEXT,
+  SHIELDING_METHOD,
   SHIELDING_WARNING_BASIS,
   SHIELDING_WARNING_TEXT,
   formatMarsCoordinate,
@@ -12,7 +13,9 @@ import {
   type RadiationHazard,
   type RadiationLevel,
 } from '../../../domain'
-import { ClassificationBadge } from '../../../components/ClassificationBadge'
+import { ClassificationBadge, InfoMark } from '../../../components/ClassificationBadge'
+import { Methodology, MethodologyItem } from '../../../components/Methodology'
+import { WarningGlyph } from '../../../components/WarningGlyph'
 import { ClassifiedValue } from '../ClassifiedValue'
 import { formatShielding, radiationHazards, type RadiationReading } from './radiationMath'
 
@@ -49,21 +52,51 @@ export function RadiationWarningFlag({ text }: { text: string }) {
   )
 }
 
+/** The warning in a few words: the rule's first clause. The whole sentence is in the methodology. */
+export const SHIELDING_WARNING_SHORT = SHIELDING_WARNING_TEXT.split(',')[0]
+
 /**
- * The point menu's Radiation field: the dose (UNAVAILABLE), with the Gale
- * measurement under it as a reference when the host has one, then
- * the atmosphere overhead with its level and the warning under the
- * threshold, with the threshold named as a project choice.
- * Divs, as the reference is a paragraph. No level is shown while the
- * shielding is unknown: the UNAVAILABLE fraction says why.
+ * How the radiation rows are worked out, behind the Methodology button:
+ * the warning's whole sentence, what the levels mean, where the line comes
+ * from, and how the atmosphere overhead is derived. `children` add what
+ * only one place has (the point menu's Gale measurement).
+ */
+export function RadiationMethodology({ children }: { children?: ReactNode }) {
+  return (
+    <Methodology title="How radiation is shown">
+      <MethodologyItem heading="What is shown">
+        The atmosphere overhead at the place, as a fraction of the atmosphere over Gale crater. It is a shielding
+        level, never a dose: no surface dose is known away from Gale.
+      </MethodologyItem>
+      <MethodologyItem heading="Levels">
+        {(['LOW', 'MEDIUM', 'HIGH'] as const).map((level) => (
+          <span key={level} className="block">
+            {level}: {RADIATION_LEVEL_TEXT[level]}.
+          </span>
+        ))}
+        <span className="block">{RADIATION_LEVEL_BASIS}.</span>
+      </MethodologyItem>
+      <MethodologyItem heading="Warning line">{SHIELDING_WARNING_BASIS}.</MethodologyItem>
+      <MethodologyItem heading="Calculation">{SHIELDING_METHOD}.</MethodologyItem>
+      {children}
+    </Methodology>
+  )
+}
+
+/**
+ * The point menu's Radiation field, in three short lines: the dose
+ * (UNAVAILABLE), the atmosphere overhead with its level, and the warning
+ * under the threshold. Everything longer (what the levels mean, the
+ * threshold as a project choice, the Gale measurement the host hands in as
+ * a reference) is behind the Methodology button. No level is shown while
+ * the shielding is unknown: the UNAVAILABLE fraction says why.
  */
 export function RadiationField({ reading, doseReference }: { reading: RadiationReading; doseReference?: ReactNode }) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-col">
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-x-1.5">
         <span className="text-caption text-ink-muted">Dose</span>
         <ClassifiedValue value={reading.dose} />
-        {doseReference}
       </div>
       <div className="flex flex-col">
         <span className="text-caption text-ink-muted">Atmosphere overhead</span>
@@ -71,29 +104,22 @@ export function RadiationField({ reading, doseReference }: { reading: RadiationR
           {reading.level && <RadiationLevelWord level={reading.level} />}
           <ClassifiedValue value={reading.shielding} format={formatShielding} />
         </span>
-        {reading.level && (
-          <span data-radiation-level-basis="" className="text-caption text-ink-subtle">
-            {/* HIGH's own words follow as the warning; the other two say what they mean here. */}
-            {reading.level === 'HIGH' ? RADIATION_LEVEL_BASIS : `${RADIATION_LEVEL_TEXT[reading.level]}. ${RADIATION_LEVEL_BASIS}`}
-          </span>
-        )}
       </div>
-      {reading.warn && (
-        <div className="flex flex-col gap-0.5">
-          <RadiationWarningFlag text={SHIELDING_WARNING_TEXT} />
-          <span data-radiation-basis="" className="text-caption text-ink-subtle">
-            {SHIELDING_WARNING_BASIS}
-          </span>
-        </div>
-      )}
+      {reading.warn && <RadiationWarningFlag text={SHIELDING_WARNING_SHORT} />}
+      <span>
+        <RadiationMethodology>
+          {doseReference && <MethodologyItem heading="The one surface measurement">{doseReference}</MethodologyItem>}
+        </RadiationMethodology>
+      </span>
     </div>
   )
 }
 
 /**
- * One radiation hazard on a leg: the rule's words, the leg's highest
- * point, where it was found, and the atmosphere overhead there. A hazard with
- * no figure is ground not checked, and says that instead.
+ * One radiation hazard on a leg, in two short lines: the level and
+ * the atmosphere overhead at the leg's highest point, and where that is. The
+ * warning is said in a few words on show, with the rule's whole sentence in the mark beside it.
+ * A hazard with no figure is ground not checked, and says that instead.
  */
 export function RadiationHazardNote({ hazard }: { hazard: RadiationHazard }) {
   // Ground with no height has no shielding figure: that is not a warning, and it has no highest point.
@@ -110,14 +136,19 @@ export function RadiationHazardNote({ hazard }: { hazard: RadiationHazard }) {
   const level = radiationLevel(hazard.magnitude.value)
   return (
     <span className="flex flex-col gap-0.5">
-      <RadiationWarningFlag text={SHIELDING_WARNING_TEXT} />
-      <span className="text-caption tabular-nums text-ink-subtle">
-        {`Highest point ${formatMarsCoordinate(hazard.coordinate)}`}
-      </span>
-      <span className="inline-flex flex-wrap items-center gap-x-1.5 text-caption">
+      <span data-radiation-warning="" className="inline-flex flex-wrap items-center gap-x-1.5 text-caption">
+        <WarningGlyph className="size-4 shrink-0 text-danger" />
         <span className="text-ink-muted">Atmosphere overhead</span>
         {level && <RadiationLevelWord level={level} />}
         <ClassifiedValue value={hazard.magnitude} format={formatShielding} />
+      </span>
+      {/* The warning in words, on show: a walk leg and the stop card have no Methodology button to carry it. */}
+      <span className="inline-flex flex-wrap items-center gap-x-1.5 text-caption text-danger">
+        {SHIELDING_WARNING_SHORT}
+        <InfoMark detail={`${SHIELDING_WARNING_TEXT}. ${SHIELDING_WARNING_BASIS}`} />
+      </span>
+      <span className="text-caption tabular-nums text-ink-subtle">
+        {`Highest point ${formatMarsCoordinate(hazard.coordinate)}`}
       </span>
     </span>
   )
@@ -140,10 +171,3 @@ export function RadiationHudGlyph({ nextLegHazards }: { nextLegHazards: Classifi
   )
 }
 
-function WarningGlyph({ className }: { className: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">
-      <path d="M12 3 2 21h20L12 3zm-1 6h2v6h-2V9zm0 8h2v2h-2v-2z" />
-    </svg>
-  )
-}

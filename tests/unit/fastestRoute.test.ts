@@ -370,7 +370,7 @@ describe('mapped obstacles along a searched route', () => {
   it('scans the path where the map was read: none found on a clear map, and the route says the kind was scanned', async () => {
     const { option } = await plan(flat)
     expect(mapped(option)).toEqual([])
-    expect(option.hazardsScanned).toEqual(['radiation', 'mapped-obstacle'])
+    expect(option.hazardsScanned).toEqual(['slope', 'radiation', 'mapped-obstacle'])
     expect(option.hazardsPartlyScanned).toBeUndefined()
     expect(methodOf(option)).toMatch(/mapped-obstacle: What the geologic map marks along the path/)
     expect(methodOf(option)).toMatch(/points marked "small crater" within 100 m/)
@@ -393,12 +393,12 @@ describe('mapped obstacles along a searched route', () => {
     expect(found.map((h) => h.unit)).toEqual(['ridged', 'small crater'])
     expect(xyOf(found[0].coordinate).x).toBeCloseTo(0.5, 2)
     expect(new Set(found.map((h) => h.id)).size).toBe(2)
-    expect(option.hazardsScanned).toEqual(['radiation', 'mapped-obstacle'])
+    expect(option.hazardsScanned).toEqual(['slope', 'radiation', 'mapped-obstacle'])
   })
 
   it('does not call the kind scanned where the map could not be read', async () => {
     const { option } = await plan(flat, request(), { mapFails: 'Map service down' })
-    expect(option.hazardsScanned).toEqual(['radiation'])
+    expect(option.hazardsScanned).toEqual(['slope', 'radiation'])
     expect(option.hazardsPartlyScanned).toBeUndefined()
     expect(mapped(option)).toEqual([])
     expect(methodOf(option)).toMatch(/mapped-obstacle \(The geologic map was not read along the route \(leg 1: Map service down\)\)/)
@@ -409,7 +409,7 @@ describe('mapped obstacles along a searched route', () => {
     const second = (b: { east: number }) => b.east > at(2.5, 0).longitudeEast
     const { option } = await plan(flat, request([[1, 0]], [2, 0]), { mapPoints: [crater(0.4, 0.05), crater(1.6, 0.05)], mapFailsFor: second })
     expect(mapped(option).map((h) => xyOf(h.coordinate).x.toFixed(1))).toEqual(['0.4'])
-    expect(option.hazardsScanned).toEqual(['radiation'])
+    expect(option.hazardsScanned).toEqual(['slope', 'radiation'])
     expect(option.hazardsPartlyScanned).toEqual({ 'mapped-obstacle': 'Not checked: leg 2: Map service down' })
     expect(methodOf(option)).toMatch(/Not checked: leg 2: Map service down/)
   })
@@ -430,11 +430,11 @@ describe('mapped obstacles along a searched route', () => {
     const sheet = { west: at(-5, 0).longitudeEast, east: at(0.6, 0).longitudeEast, south: at(0, -5).latitude, north: at(0, 5).latitude }
     const { option } = await plan(flat, request(), { mapPoints: [crater(0.3, 0.05)], mapCovers: sheet })
     expect(mapped(option)).toHaveLength(1)
-    expect(option.hazardsScanned).toEqual(['radiation'])
+    expect(option.hazardsScanned).toEqual(['slope', 'radiation'])
     expect(option.hazardsPartlyScanned?.['mapped-obstacle']).toMatch(/^Not checked: leg 1: part of it lies outside the map's sheet/)
     // Wholly outside the sheet, though its box still touches it: not scanned at all, never "in part".
     const off = await plan(flat, request(), { mapCovers: { ...sheet, east: at(-0.2, 0).longitudeEast } })
-    expect(off.option.hazardsScanned).toEqual(['radiation'])
+    expect(off.option.hazardsScanned).toEqual(['slope', 'radiation'])
     expect(off.option.hazardsPartlyScanned).toBeUndefined()
     expect(methodOf(off.option)).toMatch(/mapped-obstacle \(The geologic map was not read along the route \(leg 1: it lies outside the map's sheet/)
     // Both ends outside a sheet the path cuts across: the part on it is scanned, and its crater found.
@@ -444,7 +444,7 @@ describe('mapped obstacles along a searched route', () => {
     expect(across.option.hazardsPartlyScanned?.['mapped-obstacle']).toMatch(/leg 1: part of it lies outside the map's sheet/)
     // Wholly inside the sheet it is scanned outright.
     const inside = await plan(flat, request(), { mapCovers: { ...sheet, east: at(5, 0).longitudeEast } })
-    expect(inside.option.hazardsScanned).toEqual(['radiation', 'mapped-obstacle'])
+    expect(inside.option.hazardsScanned).toEqual(['slope', 'radiation', 'mapped-obstacle'])
     expect(inside.option.hazardsPartlyScanned).toBeUndefined()
   })
 })

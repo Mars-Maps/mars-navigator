@@ -1,5 +1,6 @@
 import { useId } from 'react'
-import { ClassificationBadge } from '../../../components/ClassificationBadge'
+import { ClassificationBadge, InfoMark } from '../../../components/ClassificationBadge'
+import { Methodology, MethodologyItem } from '../../../components/Methodology'
 import type { WalkKind } from '../../../domain'
 import { ClassifiedValue } from '../ClassifiedValue'
 import {
@@ -72,10 +73,9 @@ export function WalkCards({
             {walk.status === 'planned' ? (
               <PlannedFigures walk={walk} />
             ) : (
-              <span className="flex items-start gap-1.5">
-                <span>
-                  <span className="text-ink-subtle italic">Not planned</span>: {walk.reason}
-                </span>
+              <span className="flex items-center gap-1.5">
+                {/* Why not is in the mark: it can run to several lines. */}
+                <span className="text-ink-subtle italic">Not planned</span>
                 <ClassificationBadge classification="UNAVAILABLE" detail={walk.reason} />
               </span>
             )}
@@ -83,7 +83,12 @@ export function WalkCards({
         )
       })}
       {/* Every fit carries this: a walk "within" its energy is within it on the walking only. */}
-      {caveat && <p className="text-caption text-ink-muted">{caveat}.</p>}
+      {caveat && (
+        <p className="flex items-center gap-1.5 text-caption text-ink-muted">
+          Energy is the walking only
+          <InfoMark detail={`${caveat}.`} />
+        </p>
+      )}
     </fieldset>
   )
 }
@@ -112,7 +117,14 @@ function PlannedFigures({ walk }: { walk: PlannedWalk }) {
           </div>
         )}
       </dl>
-      {walk.samplesNote && <span className="text-ink-muted">{walk.samplesNote}</span>}
+      {/* What the walk leaves out and why can run to a paragraph: one click away, not in the card. */}
+      {walk.samplesNote && (
+        <span>
+          <Methodology title={`${WALK_KIND_TEXT[walk.kind].name}: what it leaves out and why`}>
+            <MethodologyItem>{walk.samplesNote}</MethodologyItem>
+          </Methodology>
+        </span>
+      )}
       {broken && <span className="text-danger">{broken}</span>}
       {unchecked && <span className="text-ink-muted">{unchecked}</span>}
     </>

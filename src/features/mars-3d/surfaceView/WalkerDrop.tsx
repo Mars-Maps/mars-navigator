@@ -1,4 +1,5 @@
 import { useThree } from '@react-three/fiber'
+import { InfoMark } from '../../../components/ClassificationBadge'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Raycaster, Vector2, Vector3, type Mesh } from 'three'
 import type { MarsCoordinate } from '../../../domain'
@@ -95,7 +96,7 @@ export function WalkerWidget({
 
   return (
     <>
-      <div data-keep-clear="" className="pointer-events-auto absolute right-4 bottom-14 flex w-56 flex-col gap-2 rounded-panel border border-line/60 bg-surface/70 p-3 text-caption text-ink-muted shadow-panel backdrop-blur-glass">
+      <div data-keep-clear="" className="pointer-events-auto absolute right-4 bottom-14 flex w-fit flex-col gap-2 rounded-panel border border-line/60 bg-surface/70 p-3 text-caption text-ink-muted shadow-panel backdrop-blur-glass">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -121,10 +122,10 @@ export function WalkerWidget({
           >
             <WalkerIcon />
           </button>
-          <p>
+          <p className="flex items-center gap-1.5">
             <span className="text-ink">Surface view</span>
-            <br />
-            {hint}
+            {/* How to use the walker: on hover, not three lines in the corner. */}
+            <InfoMark detail={hint} />
           </p>
         </div>
         {note && <p className="text-simulated">{note}</p>}

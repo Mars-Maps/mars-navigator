@@ -158,7 +158,10 @@ describe('TemperatureField', () => {
     expect(html).toMatch(/−?\d+ °C ± 8 °C/)
     expect(html).toContain('DERIVED')
     expect(html).toContain('fixture-model')
-    expect(html).toMatch(/at \d\d:\d\d local solar time, Ls\s\d+\.\d° (<[^>]*>)?\(northern (spring|summer|autumn|winter)\)/)
+    expect(html).toMatch(/>at \d\d:\d\d local solar time</)
+    // The season the estimate is for is in the mark beside the time.
+    expect(html).toMatch(/Ls \d+\.\d° \(northern (spring|summer|autumn|winter)\)\. /)
+    expect(html).toContain('>No measurement here<')
     expect(html).toContain('Measured values exist only at Jezero and Gale')
   })
 

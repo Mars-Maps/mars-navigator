@@ -66,5 +66,7 @@ export function hazardPointName(hazard: Hazard): string {
     const line = isShieldingWarning(value) ? `, under the warning line (${SHIELDING_WARNING_FRACTION.toFixed(2)})` : ''
     return `${label}: atmosphere overhead ${shown} of Gale's${line} · ${place}`
   }
+  // Degrees sit against their figure, as the panel prints them.
+  if (hazard.unit === '°') return `${label}: ${value.toFixed(1)}° · ${place}`
   return `${label}: ${value.toFixed(1)} ${hazard.unit || 'unit unknown'} · ${place}`
 }

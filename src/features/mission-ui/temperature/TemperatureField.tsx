@@ -24,22 +24,28 @@ export function TemperatureField({ reading }: { reading: TemperatureReading }) {
         <span className="text-caption text-ink-muted">Model estimate</span>
         <ClassifiedValue value={estimate} format={formatEstimate} />
         {conditions && (
-          <span className="text-caption text-ink-muted">
-            {`at ${formatHours(conditions.localSolarHours)} local solar time, Ls ${conditions.solarLongitudeDeg.toFixed(1)}° `}
-            {/* The mark wraps with the season, never onto a line of its own. */}
-            <span className="whitespace-nowrap">
-              {`(${conditions.season}) `}
-              <ClassificationBadge classification="DERIVED" detail={conditions.method} />
-            </span>
+          <span className="inline-flex items-center gap-1.5 text-caption text-ink-muted">
+            {`at ${formatHours(conditions.localSolarHours)} local solar time`}
+            {/* The season the estimate is for is in the mark, with how the time was worked out. */}
+            <ClassificationBadge
+              classification="DERIVED"
+              detail={`Ls ${conditions.solarLongitudeDeg.toFixed(1)}° (${conditions.season}). ${conditions.method}`}
+            />
           </span>
         )}
         {measured === null && isAvailable(estimate) && (
-          <span className="text-caption text-ink-subtle">Measured values exist only at Jezero and Gale</span>
+          <span className="inline-flex items-center gap-1.5 text-caption text-ink-subtle">
+            No measurement here
+            <ClassificationBadge classification="UNAVAILABLE" detail={NO_MEASUREMENT_HERE} />
+          </span>
         )}
       </span>
     </span>
   )
 }
+
+/** Why a point away from the two rover sites has no measured line. */
+export const NO_MEASUREMENT_HERE = 'Measured values exist only at Jezero and Gale'
 
 /**
  * A rover's ground temperature at the point's site: the latest usable
@@ -63,11 +69,12 @@ function MeasuredBlock({ measured }: { measured: Classified<MeasuredGroundTemper
   const source = measured.classification === 'DERIVED' ? measured.method : measured.source
   return (
     <span className="flex flex-col">
-      <span className="text-caption text-ink-muted">
-        {`Latest record from ${m.site}, ${m.instrument} `}
-        <span className="whitespace-nowrap">
-          <ClassificationBadge classification={measured.classification} detail={`${source}. ${m.caveat}`} />
-        </span>
+      <span className="inline-flex items-center gap-1.5 text-caption text-ink-muted">
+        {`Measured · sol ${m.sol}`}
+        <ClassificationBadge
+          classification={measured.classification}
+          detail={`Latest record from ${m.site}, ${m.instrument}: sol ${m.sol}, ${m.dateUtc}. Where the rover was that sol, not this point. ${source}. ${m.caveat}`}
+        />
       </span>
       <span className="flex flex-wrap gap-x-3">
         <span className="inline-flex items-center gap-1.5">
@@ -79,7 +86,6 @@ function MeasuredBlock({ measured }: { measured: Classified<MeasuredGroundTemper
           <ClassifiedValue value={m.maxK} format={(k) => formatCelsius(k)} />
         </span>
       </span>
-      <span className="text-caption text-ink-subtle">{`sol ${m.sol}, ${m.dateUtc}`}</span>
     </span>
   )
 }

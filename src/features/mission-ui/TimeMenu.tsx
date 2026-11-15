@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react'
-import { ClassificationBadge } from '../../components/ClassificationBadge'
+import { ClassificationBadge, InfoMark } from '../../components/ClassificationBadge'
 import { Panel } from '../../components/Panel'
 import { formatMarsCoordinate, isAvailable } from '../../domain'
 import { useMissionTime } from '../../state'
@@ -199,8 +199,11 @@ function Pickers({
       {/* Set now sits beside the group name, not inside it, so the group is
           announced as "Earth · UTC" alone. */}
       <div className="mb-1 flex items-baseline justify-between">
-        <span id={groupId} className="text-micro uppercase text-ink-subtle">
-          Earth · UTC
+        <span className="inline-flex items-center gap-1.5">
+          <span id={groupId} className="text-micro uppercase text-ink-subtle">
+            Earth · UTC
+          </span>
+          <InfoMark detail="Shown in this computer's date format; the time is UTC." />
         </span>
         <span className="flex items-center gap-1">
           <button
@@ -260,9 +263,6 @@ function Pickers({
       {/* The pickers are the browser's own and follow the computer's
           regional format (e.g. 10/19/2026, 03:09 PM); the value is UTC
           either way, and the line above shows it in ISO. */}
-      <p className="mt-1 text-caption text-ink-subtle">
-        Shown in this computer's date format; the time is UTC.
-      </p>
       {/* The same instant on the computer's clock, so Set now does not read
           as hours behind the taskbar. Follows the clock, not the draft. */}
       <p className="mt-2 flex items-baseline justify-between gap-2 text-caption">

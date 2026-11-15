@@ -67,7 +67,7 @@ describe('what a hazard’s point says', () => {
 
   it('names a mapped obstacle by the map’s wording, and another kind by its figure and unit', () => {
     expect(hazardPointName(obstacle('a', 'crater rim'))).toBe('Mapped obstacle: crater rim · 18.5°N 77.2°E')
-    expect(hazardPointName(slope('b'))).toBe('Steep slope: 23.5 ° · 18.5°N 77.2°E')
+    expect(hazardPointName(slope('b'))).toBe('Steep slope: 23.5° · 18.5°N 77.2°E')
   })
 
   it('shows no issue or decision number', () => {

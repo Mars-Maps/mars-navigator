@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ClassificationBadge } from '../../../components/ClassificationBadge'
+import { ClassificationBadge, InfoMark } from '../../../components/ClassificationBadge'
 import { Panel } from '../../../components/Panel'
 import { PanelHeader } from '../../../components/PanelHeader'
 import { useMinimized } from '../../../components/useMinimized'
@@ -66,19 +66,26 @@ export function TerrainProfile3dView({
           {moving ? (
             <p className="text-body text-ink">Click the surface to move corner {replacing + 1}.</p>
           ) : line !== null ? (
-            <div>
-              <p className="text-body text-ink">{line}</p>
-              <p className="mt-1 text-caption text-ink-subtle">
-                {state.status === 'disabled'
-                  ? 'Each click sets the next corner, in order around the region; a fifth click starts over.'
-                  : 'Use a corner\'s pencil to move it, or click the corners again in order around the region.'}
-              </p>
-            </div>
+            <p className="flex items-start gap-1.5 text-body text-ink">
+              <span>{line}</span>
+              <InfoMark
+                detail={
+                  state.status === 'disabled'
+                    ? 'Each click sets the next corner, in order around the region; a fifth click starts over.'
+                    : "Use a corner's pencil to move it, or click the corners again in order around the region."
+                }
+              />
+            </p>
           ) : (
-            <p className="text-caption text-ink-subtle">
-              {surface === null || surface.classification === 'UNAVAILABLE'
-                ? 'The plot, in its own box, is waiting for the heights. Drag the box by its handle to move it.'
-                : 'The plot is in its own box: drag inside it to orbit, scroll to zoom, drag its handle to move it.'}
+            <p className="flex items-center gap-1.5 text-caption text-ink-subtle">
+              {surface === null || surface.classification === 'UNAVAILABLE' ? 'Waiting for the heights' : 'The plot is in its own box'}
+              <InfoMark
+                detail={
+                  surface === null || surface.classification === 'UNAVAILABLE'
+                    ? 'The plot, in its own box, is waiting for the heights. Drag the box by its handle to move it.'
+                    : 'The plot is in its own box: drag inside it to orbit, scroll to zoom, drag its handle to move it.'
+                }
+              />
             </p>
           )}
         </div>
