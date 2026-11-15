@@ -53,6 +53,15 @@ function regionalFrame(extent: Extract<DemExtent, { kind: 'regional' }>): Region
   }
 }
 
+/**
+ * One cell's size in degrees, the same in latitude and longitude: both kinds
+ * of grid are equirectangular at standard parallel 0. A lattice stepped by
+ * this lands on each cell once, whatever radius its own distances are on.
+ */
+export function cellDegrees(grid: DemGrid): number {
+  return grid.extent?.kind === 'regional' ? regionalFrame(grid.extent).cellDeg : 1 / pixelsPerDegree(grid)
+}
+
 /** Fractional (column, row) of a coordinate on a regional grid, from its outer corner. */
 function regionalPosition(frame: RegionalFrame, latitude: number, longitudeEast: number) {
   return {

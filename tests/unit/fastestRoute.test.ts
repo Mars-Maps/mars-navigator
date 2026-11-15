@@ -300,3 +300,45 @@ describe('searchLeg limits', () => {
     expect(terrain.reads).toHaveLength(1)
   })
 })
+
+describe('the search lattice on a model stated on the Mars 2000 sphere', () => {
+  // A 20 m cell on the 3,396.19 km sphere, as the Jezero CTX model states it.
+  const CELL_DEG = (0.02 / 3396.19) * (180 / Math.PI)
+  const KM_PER_DEG_LAT = (3389.5 * Math.PI) / 180
+
+  /** The model row under each lattice row of a 10 km leg north, south to north. */
+  async function modelRows(cellDeg?: number): Promise<number[]> {
+    const ys = new Set<number>()
+    const { option } = await plan(
+      (_x, y) => {
+        ys.add(Math.round(y * 1e7) / 1e7)
+        return 0
+      },
+      request([], [0, 10]),
+      { cellDeg },
+    )
+    drawn(option)
+    return [...ys].sort((p, q) => p - q).map((y) => Math.floor(y / KM_PER_DEG_LAT / CELL_DEG))
+  }
+  const steps = (rows: number[]) => rows.slice(1).map((row, i) => row - rows[i])
+
+  it('steps one model cell at a time, so no step spans two cells of ground', async () => {
+    const rows = await modelRows(CELL_DEG)
+    expect(rows.length).toBeGreaterThan(700)
+    expect(new Set(steps(rows))).toEqual(new Set([1]))
+  })
+
+  it('without the cell in degrees steps 20 m on the mean sphere, which skips a model row every 507', async () => {
+    expect(steps(await modelRows())).toContain(2)
+  })
+})
+
+describe('a stop with no height after a model failed to read', () => {
+  it('says the read failed, not that no model covers the stop', async () => {
+    const failed = ['CTX DTM mosaic of Jezero, 20 m: HTTP 503']
+    const { option } = await plan((x) => (x < 0.2 ? Number.NaN : 0), request(), { failed })
+    expect(reasonOf(option)).toBe(
+      'No usable height at the departure: an elevation model could not be read (CTX DTM mosaic of Jezero, 20 m: HTTP 503)',
+    )
+  })
+})

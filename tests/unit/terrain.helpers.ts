@@ -46,6 +46,10 @@ export interface FixtureOptions {
   coarser?: { cellKm: number; z: (x: number, y: number) => number }
   /** The cell the search lattice runs at, when not the first model's. */
   gridCellKm?: number
+  /** The grid's cell in degrees, as a real model states it; absent, the lattice steps `cellKm` on the mean sphere. */
+  cellDeg?: number
+  /** Models named as failed to read, with the heights that did come back. */
+  failed?: string[]
   lines?: GeologicLineFeature[]
   /** The map read fails with this reason. */
   mapFails?: string
@@ -67,7 +71,7 @@ export function fixtureTerrain(z: (x: number, y: number) => number, options: Fix
   const boxes: { west: number; east: number; south: number; north: number }[] = []
   const cellKm = options.cellKm ?? 0.02
   const terrain: RouteTerrain & { reads: number[]; boxes: typeof boxes } = {
-    grid: () => ({ cellKm: options.gridCellKm ?? cellKm, readsWhole: options.readsWhole ?? true }),
+    grid: () => ({ cellKm: options.gridCellKm ?? cellKm, cellDeg: options.cellDeg, readsWhole: options.readsWhole ?? true }),
     reads,
     boxes,
     heights: (points, _signal, minCellKm) => {
@@ -86,7 +90,7 @@ export function fixtureTerrain(z: (x: number, y: number) => number, options: Fix
       }
       const models = [{ cellKm, source: 'fixture DEM', site: options.site ?? true }]
       if (options.coarser) models.push({ cellKm: options.coarser.cellKm, source: 'fixture global DEM', site: false })
-      return Promise.resolve(official({ heights: h, model, models }, 'fixture DEM'))
+      return Promise.resolve(official({ heights: h, model, models, failed: options.failed }, 'fixture DEM'))
     },
     obstacles: (bounds) => {
       boxes.push(bounds)

@@ -282,6 +282,8 @@ describe('LayeredElevation', () => {
     const { layered, ios } = chain({ fineFails: true })
     const read = await layered.elevationsAt(pairs(centreOf(1, 2, 1)), signal())
     expect(read).toMatchObject({ classification: 'OFFICIAL' })
+    // The failed model is named, so a reader can tell a failed read from ground no model covers.
+    if (read.classification === 'OFFICIAL') expect(read.value.failed).toEqual(['fixture jezero-hirise-1m: The fixture jezero-hirise-1m server answered HTTP 503'])
     if (read.classification === 'OFFICIAL') expect(read.value.heights[0]).toBe(500)
     expect(ios.fine.requests).toBeGreaterThan(0)
   })
@@ -302,10 +304,14 @@ describe('LayeredElevation', () => {
 
   it('names the grid a search runs on: the coarsest model it reads along the path, never one read by rows', () => {
     const { layered } = chain({ fineRowByRow: true, globalRowByRow: true })
-    expect(layered.searchGridAlong([centreOf(1, 1, 1), centreOf(2, 2, 1)])).toEqual({ cellKm: 0.02, readsWhole: true })
-    expect(layered.searchGridAlong([centreOf(1, 1, 1), { latitude: 0, longitudeEast: 10 }])).toEqual({ cellKm: 0.2, readsWhole: false })
+    expect(layered.searchGridAlong([centreOf(1, 1, 1), centreOf(2, 2, 1)])).toMatchObject({ cellKm: 0.02, readsWhole: true })
+    expect(layered.searchGridAlong([centreOf(1, 1, 1), { latitude: 0, longitudeEast: 10 }])).toMatchObject({ cellKm: 0.2, readsWhole: false })
+    // The cell in degrees is the model's own, on the Mars 2000 sphere: 20 m there is 1.002 × 20 m on the mean radius.
+    const ctxCellDeg = layered.searchGridAlong([centreOf(1, 1, 1), centreOf(2, 2, 1)]).cellDeg
+    expect(ctxCellDeg).toBeCloseTo((20 / 3_396_190) * (180 / Math.PI), 12)
+    expect(layered.searchGridAlong([centreOf(1, 1, 1), { latitude: 0, longitudeEast: 10 }]).cellDeg).toBeGreaterThan(ctxCellDeg)
     // A site model small enough to read whole is searched at its own cell.
-    expect(chain().layered.searchGridAlong([centreOf(1, 1, 1), centreOf(2, 2, 1)])).toEqual({ cellKm: 0.001, readsWhole: true })
+    expect(chain().layered.searchGridAlong([centreOf(1, 1, 1), centreOf(2, 2, 1)])).toMatchObject({ cellKm: 0.001, readsWhole: true })
   })
 
   it('reads a search from every model but one read by rows, the global DEM answering outside the site', async () => {

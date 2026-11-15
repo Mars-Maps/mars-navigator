@@ -1,5 +1,5 @@
 import { derived, official, unavailable, type Classified, type MarsCoordinate } from '../../domain'
-import { edgeDistanceM, gridCovers } from '../elevation/demGrid'
+import { cellDegrees, edgeDistanceM, gridCovers } from '../elevation/demGrid'
 import type { DemElevationAdapter } from './ElevationAdapter'
 
 /**
@@ -31,6 +31,13 @@ export interface HeightModel {
 export interface SearchGrid {
   /** Its cell size, km; 0 when no model can be searched. */
   cellKm: number
+  /**
+   * The same cell in degrees, of latitude and of longitude; 0 when no model
+   * can be searched. The products state `cellKm` on the Mars 2000 sphere
+   * (3,396.19 km) and distances here are on the mean radius, so a lattice
+   * stepped by `cellKm` would be 1.002 cells apart and skip a cell every 507.
+   */
+  cellDeg: number
   /** Read whole, so any number of points costs no request; else one row-range request per lattice row. */
   readsWhole: boolean
 }
@@ -43,6 +50,12 @@ export interface SourcedHeights {
   sourceIndex: Uint8Array
   /** Each model, in chain order: provenance and cell size on one object, so they cannot drift apart. */
   sources: HeightModel[]
+  /**
+   * The models that cover a point asked for and could not be read, each as
+   * "label: reason". A NaN height may then be a failed read, not ground no
+   * model covers; absent when every model asked answered.
+   */
+  failed?: readonly string[]
 }
 
 /**
@@ -150,7 +163,9 @@ export class LayeredElevation {
       const model = this.chain.find((a) => !this.isSlow(a) && gridCovers(a.source, c.latitude, c.longitudeEast))
       if (model && (!coarsest || model.source.cellKm > coarsest.source.cellKm)) coarsest = model
     }
-    return coarsest ? { cellKm: coarsest.source.cellKm, readsWhole: coarsest.readsWhole } : { cellKm: 0, readsWhole: false }
+    return coarsest
+      ? { cellKm: coarsest.source.cellKm, cellDeg: cellDegrees(coarsest.source), readsWhole: coarsest.readsWhole }
+      : { cellKm: 0, cellDeg: 0, readsWhole: false }
   }
 
   private isSlow(adapter: DemElevationAdapter): boolean {
@@ -175,6 +190,7 @@ export class LayeredElevation {
     const sourceIndex = new Uint8Array(count)
     let remaining = Array.from({ length: count }, (_, i) => i)
     let lastFailure: string | null = null
+    const failed: string[] = []
     for (let k = 0; k < this.chain.length && remaining.length > 0; k++) {
       const adapter = this.chain[k]
       if (!include(adapter)) continue
@@ -189,6 +205,7 @@ export class LayeredElevation {
       if (signal.aborted) return unavailable('Cancelled')
       if (read.classification === 'UNAVAILABLE') {
         lastFailure = read.reason
+        failed.push(`${adapter.source.label}: ${read.reason}`)
         continue
       }
       asked.forEach((i, j) => {
@@ -201,7 +218,8 @@ export class LayeredElevation {
       remaining = remaining.filter((i) => Number.isNaN(heights[i]))
     }
     if (remaining.length === count && lastFailure !== null) return unavailable(lastFailure)
-    return official({ heights, sourceIndex, sources: this.chain.map(heightModel) }, this.description)
+    const sources = this.chain.map(heightModel)
+    return official(failed.length > 0 ? { heights, sourceIndex, sources, failed } : { heights, sourceIndex, sources }, this.description)
   }
 
   /**

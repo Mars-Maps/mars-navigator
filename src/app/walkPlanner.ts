@@ -144,8 +144,8 @@ export function walkHeights(
   return async (points, signal) => {
     const read = await elevationsAt(points, signal)
     if (read.classification === 'UNAVAILABLE') return read
-    const { heights, sourceIndex, sources } = read.value
-    return { ...read, value: { heights, model: sourceIndex, models: sources } }
+    const { heights, sourceIndex, sources, failed } = read.value
+    return { ...read, value: failed ? { heights, model: sourceIndex, models: sources, failed } : { heights, model: sourceIndex, models: sources } }
   }
 }
 
