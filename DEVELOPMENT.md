@@ -54,38 +54,59 @@ CI (`.github/workflows/ci.yml`) runs the same steps, plus a guard that no
 
 ## Testing
 
-Tests live in `tests/` and run with vitest in the Node environment (no
-browser, no jsdom): `tests/unit/`, `tests/integration/` and shared
-`tests/fixtures/`. `tsconfig.test.json` type-checks them with the app's
-rules, because vitest strips types without checking them.
+Mars Navigator uses automated testing to verify scientific calculations, application logic, data adapters and the handling of external datasets.
 
-What gets a test: calculations, algorithms, adapters, data validation and
-coordinate handling. Rendering in WebGL is checked by hand unless a bug
-justifies a regression test.
+Tests are located in the `tests/` directory and run with Vitest in a Node.js environment. The test suite is organized into unit tests, integration tests and shared fixtures.
 
-Notes:
+### Testing structure
 
-- **Component tests render on the server.** They use
-  `renderToStaticMarkup` and assert on the HTML. A component that reads a
-  Zustand store through its hook sees the store's **initial** state during
-  server rendering, whatever `setState` did before, so a test cannot put a
-  component into another mode that way. Test mode-dependent logic through
-  the pure function behind it, or render the inner component with props.
-  Effects do not run either.
-- **Adapters take their I/O as a parameter** (a `fetch`-like function or an
-  I/O object). Tests pass a fake that records the URLs asked for and serves
-  fixtures; no test touches the network.
-- **Fixtures are real, trimmed.** Files in `tests/fixtures/` are recorded
-  answers from the live services, cut to the fields the adapters read, with
-  the date they were recorded. Broken records are derived from them in the
-  test.
-- **The committed data is tested as data**: the MEDA extract, the TES grids
-  and the gazetteer are validated by tests, since nobody can check
-  thousands of rows by eye.
-- **The temperature model has a validation test** against the two rovers'
-  measurements; it fails if the model drifts past the stated error bound.
-- **Stores are tested directly** with `getState()` / `setState()`.
-- Test titles describe behaviour in a sentence.
+- `tests/unit/` contains focused tests for individual functions, calculations and modules.
+- `tests/integration/` verifies interactions between components of the application's logic and data processing.
+- `tests/fixtures/` provides representative data records used to test adapters and calculations without relying on live external services.
+
+The `tsconfig.test.json` configuration applies TypeScript checking to the tests using the application's rules.
+
+### What is tested
+
+Automated tests focus on calculations, routing algorithms, data validation, coordinate conversion, scientific models and data adapters.
+
+WebGL rendering is primarily reviewed manually because the test environment does not provide a browser or WebGL context. Regression tests are introduced where a specific issue justifies additional automated coverage.
+
+### Component testing
+
+Component tests use React's `renderToStaticMarkup` to examine generated HTML.
+
+During server-side rendering, components using Zustand hooks observe their initial store state. Effects are not executed, and changing a store before rendering does not reliably place a component into another application mode.
+
+Mode-dependent behaviour is therefore tested through pure functions or inner components receiving explicit properties.
+
+### Testing external data adapters
+
+Adapters receive their input/output dependencies through parameters, such as a fetch-compatible function or an I/O object.
+
+Tests replace these dependencies with controlled implementations that record requested URLs and return predefined fixtures.
+
+This allows the application to verify data-processing behaviour without making network requests.
+
+### Scientific fixtures and data validation
+
+Test fixtures are based on trimmed responses from actual data services. They retain the fields required by the adapters and record when the original responses were obtained.
+
+Invalid or incomplete records are derived from these fixtures to verify how the application handles unexpected data.
+
+Committed scientific datasets, including MEDA extracts, TES grids and planetary place names, are also checked through automated tests.
+
+### Scientific model validation
+
+The surface temperature model is evaluated against measurements from the two rover locations described in the project.
+
+The corresponding test fails when the model exceeds its documented error tolerance.
+
+### State management testing
+
+Zustand stores are tested directly through their `getState()` and `setState()` interfaces.
+
+Test names should describe the behaviour being verified in clear sentences, making failures easier to interpret during development and review.
 
 ## Gotchas
 
