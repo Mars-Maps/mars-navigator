@@ -90,9 +90,9 @@ first. Heights are metres above the MOLA areoid on the Mars 2000 sphere
 
 | Model | File | Licence | Attribution |
 |---|---|---|---|
-| HRSC–MOLA blended DEM v2, 200 m (global, in use) | `https://planetarymaps.usgs.gov/mosaic/Mars/HRSC_MOLA_Blend/Mars_HRSC_MOLA_BlendDEM_Global_200mp_v2.tif` | MOLA CC0; HRSC CC BY-SA 3.0 IGO; "please cite authors" (USGS product page, 2026-10-25). Share-alike applies to anything derived and redistributed from these heights | USGS Astrogeology, NASA GSFC (MOLA), ESA/DLR/FU Berlin (HRSC); Fergason, Hare and Laura 2018 |
-| MOLA DEM, 463 m (global, described as a fallback) | `https://planetarymaps.usgs.gov/mosaic/Mars_MGS_MOLA_DEM_mosaic_global_463m.tif` | CC0, use constraints none (USGS product page, 2026-10-18) | MOLA Team, NASA GSFC; USGS Astrogeology |
-| HiRISE DTM mosaic of Jezero, 1 m (Mars 2020 TRN) | `https://planetarymaps.usgs.gov/mosaic/mars2020_trn/HiRISE/JEZ_hirise_soc_006_DTM_MOLAtopography_DeltaGeoid_1m_Eqc_latTs0_lon0_blend40.tif` | Access constraints none; "Please cite authors" (USGS product pages, 2026-10-28) | USGS Astrogeology; NASA/JPL/University of Arizona (HiRISE), NASA/JPL/MSSS (CTX); Fergason, Hare, Mayer et al. 2020, Mars 2020 Terrain Relative Navigation products |
+| HRSC–MOLA blended DEM v2, 200 m (global, in use) | `https://planetarymaps.usgs.gov/mosaic/Mars/HRSC_MOLA_Blend/Mars_HRSC_MOLA_BlendDEM_Global_200mp_v2.tif` | MOLA CC0; HRSC CC BY-SA 3.0 IGO; "please cite authors" (USGS product page, 2026-11-13). Share-alike applies to anything derived and redistributed from these heights | USGS Astrogeology, NASA GSFC (MOLA), ESA/DLR/FU Berlin (HRSC); Fergason, Hare and Laura 2018 |
+| MOLA DEM, 463 m (global, described as a fallback) | `https://planetarymaps.usgs.gov/mosaic/Mars_MGS_MOLA_DEM_mosaic_global_463m.tif` | CC0, use constraints none (USGS product page, 2026-11-13) | MOLA Team, NASA GSFC; USGS Astrogeology |
+| HiRISE DTM mosaic of Jezero, 1 m (Mars 2020 TRN) | `https://planetarymaps.usgs.gov/mosaic/mars2020_trn/HiRISE/JEZ_hirise_soc_006_DTM_MOLAtopography_DeltaGeoid_1m_Eqc_latTs0_lon0_blend40.tif` | Access constraints none; "Please cite authors" (USGS product pages, 2026-11-13) | USGS Astrogeology; NASA/JPL/University of Arizona (HiRISE), NASA/JPL/MSSS (CTX); Fergason, Hare, Mayer et al. 2020, Mars 2020 Terrain Relative Navigation products |
 | CTX DTM mosaic of Jezero, 20 m (Mars 2020 TRN) | `https://planetarymaps.usgs.gov/mosaic/mars2020_trn/CTX/JEZ_ctx_B_soc_008_DTM_MOLAtopography_DeltaGeoid_20m_Eqc_latTs0_lon0.tif` | Same | Same |
 
 Product pages:
@@ -110,7 +110,7 @@ box is no-data); the 20 m model is used there.
 `npm run datum-check` compares every waypoint of the live rover feeds
 (`elev_geoid`) with the nearest cell of each model, through the app's own
 adapters. DERIVED: model minus rover, neither corrected. Feeds read
-2026-11-07: Perseverance 708 waypoints (sols 13–2022), Curiosity 1,386
+2026-11-14: Perseverance 708 waypoints (sols 13–2022), Curiosity 1,386
 (sols 3–5045).
 
 | Rover | Model | Compared | Median | Median abs. | 95% within | Worst |
