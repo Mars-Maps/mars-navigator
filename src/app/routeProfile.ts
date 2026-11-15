@@ -30,7 +30,7 @@ export interface ProfileHeights {
 }
 
 /** The profile while its heights are being read; defined beside the frame that reads it. */
-export { SAMPLING_REASON } from '../features/mission-ui/navigation/ElevationProfilePanel'
+export { SAMPLING_REASON } from '../features/mission-ui/navigation/profileReasons'
 
 /** Added to a first answer's method while the finer model is still being read. */
 export const REFINING_NOTE = 'refining with the finer elevation model, still being read'

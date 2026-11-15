@@ -5,24 +5,25 @@ import {
   derived,
   insideBounds,
   unavailable,
-  walkPlanProblem,
   type Classified,
   type GeologicFeatures,
   type GeologicUnit,
   type GeologicUnitArea,
   type MarsCoordinate,
+  type MissionSettings,
   type MissionSite,
   type RoverTraverse,
   type ScienceGoal,
   type SiteBounds,
+  type SlopeLimit,
   type WalkLeg,
-  type WalkPlan,
   type WalkStop,
 } from '../domain'
 import { CRATER_NEAR_KM } from '../features/route-analysis/mappedObstacles'
 import { farthestFromRoverPath } from '../features/route-analysis/provenGround'
-import { DEFAULT_MAX_WALK_KM, SCIENCE_GOALS, candidateStops, confirmStops } from '../features/route-analysis/scienceGoals'
+import { DEFAULT_MAX_WALK_KM, SCIENCE_GOALS, candidateStops, confirmStops, stopReason } from '../features/route-analysis/scienceGoals'
 import { walkLegs, type CellKmAlong, type WalkHeights } from '../features/route-analysis/walkLegs'
+import type { WalkDraft } from './planWalks'
 import type { PlanStatus } from '../features/mission-ui/walk/GoalPicker'
 import { canTransition, useMissionStore, useWalkPlan } from '../state'
 
@@ -41,14 +42,16 @@ export interface WalkPlannerSources {
 
 /**
  * The walk planner as the shell uses it: the goals to pick from and
- * the two steps, stops on the goal's units then legs between them,
- * with the map's data read here so features never see the adapters.
+ * the two steps, stops on the goal's units then legs between them, with the map's data read here so features never see the adapters.
  */
 export interface WalkPlanner {
   goals: readonly ScienceGoal[]
   /** The start and the stops, or why there are none. */
   candidateStops: (goal: ScienceGoal, start: MarsCoordinate, signal: AbortSignal) => Promise<Classified<WalkStop[]>>
-  walkLegs: (stops: readonly WalkStop[], signal: AbortSignal) => Promise<WalkLeg[]>
+  /** At the cited suited limit unless `limit` says otherwise (the mission settings). */
+  walkLegs: (stops: readonly WalkStop[], signal: AbortSignal, limit?: SlopeLimit) => Promise<WalkLeg[]>
+  /** Walk 1, the flat bedrock: its stops within the settings, confirmed on the map, and its sample places. */
+  flatBedrock: (start: MarsCoordinate, settings: MissionSettings, signal: AbortSignal) => Promise<Classified<WalkDraft>>
 }
 
 export function createWalkPlanner(sources: WalkPlannerSources): WalkPlanner {
@@ -58,9 +61,8 @@ export function createWalkPlanner(sources: WalkPlannerSources): WalkPlanner {
     candidateStops: async (goal, start, signal) => {
       // Inside the sheet, so straight legs between stops on its units stay on it:
       // ground the map does not cover could never read as checked and clear.
-      if (!insideBounds(start, site.bounds)) {
-        return unavailable(`This start is outside the ${site.map.id} map sheet, the only map a walk can be planned on (${site.name})`)
-      }
+      const problem = landingSiteProblem(start, site)
+      if (problem !== null) return unavailable(problem)
       const units = await sources.units(boxAround([start], DEFAULT_MAX_WALK_KM), signal)
       if (units.classification === 'UNAVAILABLE') return unavailable(`The map's units around this start could not be read: ${units.reason}`)
       const candidates = candidateStops(goal, start, units.value)
@@ -71,16 +73,51 @@ export function createWalkPlanner(sources: WalkPlannerSources): WalkPlanner {
       }
       return derived(stops, "Stops on the goal's units of the site's geologic map")
     },
-    walkLegs: async (stops, signal) => {
+    walkLegs: async (stops, signal, limit = SUITED_SLOPE_LIMIT) => {
       // An unread map goes on as it is: `walkLegs` says so on each leg, never reads it as clear.
       const [obstacles, traverse] = await Promise.all([
         sources.features(boxAround(stops.map((s) => s.coordinate), CRATER_NEAR_KM * 2), signal),
         sources.traverse(signal).catch((e: unknown) => unavailable<RoverTraverse>(e instanceof Error ? e.message : String(e))),
       ])
-      const legs = await walkLegs(stops, sources.heights, sources.cellKmAlong, obstacles, SUITED_SLOPE_LIMIT, signal)
+      const legs = await walkLegs(stops, sources.heights, sources.cellKmAlong, obstacles, limit, signal)
       return legs.map((leg) => ({ ...leg, farthestFromRoverPathM: farthestFromRoverPath(leg.path, traverse) }))
     },
+    flatBedrock: async (start, settings, signal) => {
+      const problem = landingSiteProblem(start, site)
+      if (problem !== null) return unavailable(problem)
+      const units = await sources.units(boxAround([start], DEFAULT_MAX_WALK_KM), signal)
+      if (units.classification === 'UNAVAILABLE') return unavailable(`The map's units around this start could not be read: ${units.reason}`)
+      // Loaded on first use: a static import put the first load over its 500 kB.
+      const { FLAT_BEDROCK_GOAL, FLAT_BEDROCK_REACH_BASIS, FLAT_BEDROCK_REASONS, flatBedrockStops, floorSamplePlacesKm } = await import(
+        '../features/route-analysis/flatBedrockWalk'
+      )
+      const draft = flatBedrockStops(start, units.value, settings)
+      if (draft.classification === 'UNAVAILABLE') return draft
+      // Each stop's unit as the map answers for its exact point, as the single-goal planner does.
+      const reads = await Promise.all(draft.value.stops.map((s) => sources.unitAt(s.coordinate, signal)))
+      const { reachKm, placements, samples } = draft.value
+      const stops = confirmStops(FLAT_BEDROCK_GOAL, draft.value.stops, reads, reachKm, (unit, stop) =>
+        stopReason(FLAT_BEDROCK_GOAL, unit, reachKm, { placement: placements[stop.id], reachBasis: FLAT_BEDROCK_REACH_BASIS }),
+      )
+      // Every stop after the landing site was there, so the map's reads dropped them all.
+      if (stops.length < 2) return unavailable(FLAT_BEDROCK_REASONS.otherUnits)
+      // On the stops as confirmed: a dropped stop changes the walk the places lie along.
+      const placesKm = floorSamplePlacesKm(stops.map((s) => s.coordinate), units.value, samples)
+      const method = draft.classification === 'DERIVED' ? draft.method : draft.source
+      return derived({ goal: FLAT_BEDROCK_GOAL, stops, ...(placesKm.length > 0 ? { placesKm } : {}) }, method)
+    },
   }
+}
+
+/**
+ * Why no walk can start at `point`, or null when one can: the panel
+ * says it at the landing site, before the planner is asked, and the planner
+ * gives the same reason.
+ */
+export function landingSiteProblem(point: MarsCoordinate, site: Pick<MissionSite, 'name' | 'bounds' | 'map'>): string | null {
+  return insideBounds(point, site.bounds)
+    ? null
+    : `This landing site is outside the ${site.map.id} map sheet, the only map a walk can be planned on (${site.name})`
 }
 
 /**
@@ -127,9 +164,9 @@ export function standAtWalkStart(): void {
 }
 
 /**
- * What the panel shows of its planning, given where the walk starts now. A
- * failure or a run in progress belongs to the start it was for, so neither
- * shows once the start has moved.
+ * What the panel shows of its planning, given where the walk lands now. A
+ * failure or a run in progress belongs to the landing site it was for, so
+ * neither shows once the site has moved.
  */
 export function planStatusAt(
   status: { status: PlanStatus; at: MarsCoordinate | null },
@@ -138,33 +175,3 @@ export function planStatusAt(
   return status.status.kind !== 'idle' && status.at !== start ? { kind: 'idle' } : status.status
 }
 
-export type PlanResult =
-  | { status: 'planned'; plan: WalkPlan }
-  | { status: 'failed'; reason: string }
-  | { status: 'aborted' }
-
-/**
- * One walk plan for `goal` from `start`: stops, then legs over them, checked
- * against the contract (`walkPlanProblem`) before anyone sees it. A planner
- * that throws, or a broken plan, comes back as a reason, never half a plan.
- */
-export async function planWalk(
-  planner: WalkPlanner,
-  goal: ScienceGoal,
-  start: MarsCoordinate,
-  signal: AbortSignal,
-): Promise<PlanResult> {
-  try {
-    const stops = await planner.candidateStops(goal, start, signal)
-    if (signal.aborted) return { status: 'aborted' }
-    if (stops.classification === 'UNAVAILABLE') return { status: 'failed', reason: stops.reason }
-    const legs = await planner.walkLegs(stops.value, signal)
-    if (signal.aborted) return { status: 'aborted' }
-    const plan: WalkPlan = { goal, stops: stops.value, legs, slopeLimit: SUITED_SLOPE_LIMIT }
-    const problem = walkPlanProblem(plan)
-    return problem === null ? { status: 'planned', plan } : { status: 'failed', reason: problem }
-  } catch (e) {
-    if (signal.aborted) return { status: 'aborted' }
-    return { status: 'failed', reason: `The planner failed: ${e instanceof Error ? e.message : String(e)}` }
-  }
-}
