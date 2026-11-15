@@ -383,8 +383,10 @@ describe('SlotTree columns', () => {
     expect(at('Coordinate table')).toBeGreaterThan(at('Elevation profile'))
     expect(at('Surface caption')).toBeGreaterThan(at('Coordinate table'))
     expect(at('Scale bar')).toBeGreaterThan(at('Surface caption'))
-    // One column; nothing else in the tree opts out.
-    expect(html.match(/pointer-events-none/g)).toHaveLength(1)
+    // The column, and the tool dock's slot, whose dock and panel take the pointer themselves so the
+    // box a panel leaves when it moves aside never keeps a drag from the map; nothing else opts out.
+    expect(html.match(/pointer-events-none/g)).toHaveLength(2)
+    expect(SLOTS.toolDock.position).toContain('pointer-events-none!')
     // The detail panels sit in one scrolling box, the search line above it and the coordinate table below.
     const box = `<div data-scroll-group="navigation" class="pointer-events-auto ${SCROLL_GROUPS.navigation}">`
     expect(html.split(box)).toHaveLength(2)
