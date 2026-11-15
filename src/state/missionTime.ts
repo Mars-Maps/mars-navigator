@@ -8,7 +8,7 @@ import {
 } from '../domain'
 
 /**
- * The mission clock (#7). Its own store, separate from missionStore,
+ * The mission clock. Its own store, separate from missionStore,
  * so a time change re-renders only what reads time — the sun light, the
  * caption, the time menu.
  *

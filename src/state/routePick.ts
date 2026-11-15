@@ -1,21 +1,28 @@
 import { create } from 'zustand'
 import type { MarsCoordinate, SurfacePoint } from '../domain'
+import { useLandingSite } from './landingSite'
 import { useMissionStore } from './missionStore'
 
 /**
  * Pick on the globe: which route field the next left click on the
  * globe fills. Its own store, like the Measure tool's, so missionStore stays
  * under the 500-line limit. A stop is its index in the draft; `new-stop`
- * adds one before the destination.
+ * adds one before the destination. `landing-site` is the planned walk's
+ * landing point, not a route field: it goes through the same pick so
+ * the globe has one click to route, one crosshair and one Escape.
  */
-export type RoutePickSlot = 'departure' | 'destination' | 'new-stop' | number
+export type RoutePickSlot = 'departure' | 'destination' | 'new-stop' | 'landing-site' | number
 
 export interface RoutePickState {
   /** The field being picked, or null when no pick is running. */
   slot: RoutePickSlot | null
   startRoutePick: (slot: RoutePickSlot) => void
   cancelRoutePick: () => void
-  /** The pick's click: writes the field, selects the point as Set point does, and ends the pick. */
+  /**
+   * The pick's click: writes the field, selects the point as Set point does,
+   * and ends the pick. The landing site's pick stays on, so the next click
+   * moves the site, until it is cancelled.
+   */
   pickRoutePoint: (point: MarsCoordinate) => void
 }
 
@@ -24,6 +31,7 @@ export function describeRoutePick(slot: RoutePickSlot): string {
   if (slot === 'departure') return 'Click the surface to set the departure'
   if (slot === 'destination') return 'Click the surface to set the destination'
   if (slot === 'new-stop') return 'Click the surface to add a stop'
+  if (slot === 'landing-site') return 'Click the surface to set the landing site'
   return `Click the surface to set stop ${slot + 1}`
 }
 
@@ -40,10 +48,11 @@ export function markerLabelAt(markers: readonly SurfacePoint[], coordinate: Mars
   return m?.label ?? null
 }
 
-/** Writes `point` into the route draft's `slot`, through the store's own setters. */
+/** Writes `point` into the route draft's `slot`, or the landing site, through the stores' own setters. */
 export function writeRouteSlot(slot: RoutePickSlot, point: MarsCoordinate): void {
   const mission = useMissionStore.getState()
-  if (slot === 'departure') mission.setDeparture(point)
+  if (slot === 'landing-site') useLandingSite.getState().setLandingSite(point)
+  else if (slot === 'departure') mission.setDeparture(point)
   else if (slot === 'destination') mission.setDestination(point)
   else if (slot === 'new-stop') mission.addStop(point)
   else if (slot < mission.routeDraft.stops.length) mission.updateStop(slot, point)
@@ -57,9 +66,10 @@ export const useRoutePick = create<RoutePickState>()((set, get) => ({
   pickRoutePoint: (point) => {
     const { slot } = get()
     if (slot === null) return
-    set({ slot: null })
     // The draft is read-only while navigating, as Set point leaves it.
-    if (useMissionStore.getState().viewMode === 'navigation') return
+    const navigating = useMissionStore.getState().viewMode === 'navigation'
+    if (slot !== 'landing-site' || navigating) set({ slot: null })
+    if (navigating) return
     writeRouteSlot(slot, point)
     useMissionStore.getState().selectPoint(point)
   },

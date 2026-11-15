@@ -1,7 +1,7 @@
 import type { MarsCoordinate } from './mars'
 
 /**
- * The mission clock: one UTC instant shared by the 3D scene and the UI (#7).
+ * The mission clock: one UTC instant shared by the 3D scene and the UI.
  *
  * An Earth UTC instant is the single input. Everything Martian (sol date,
  * local solar time, where the sun is overhead) is calculated from it, so

@@ -1,6 +1,8 @@
 export type { CoordinateTableState } from './coordinateTable'
 export { MARKER_DESCRIPTION_MAX } from './markers'
 export * from './hoverPrecision'
+export * from './landingColours'
+export * from './landingSite'
 export * from './layerLegends'
 export * from './markerColors'
 export * from './measure'
