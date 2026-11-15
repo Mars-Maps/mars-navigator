@@ -127,7 +127,11 @@ export function WalkPlannerPanel() {
     running.current = controller
     const at = landing
     setStatus({ status: { kind: 'planning' }, at })
-    setOutcomes([]) // a run's outcomes belong to its landing site and settings
+    // A run's outcomes belong to its landing site and settings, so the cards
+    // go while it plans. The kept ones stay until the new plans are stored:
+    // a run cancelled by closing the panel leaves the old plans in the store,
+    // and their cards come back with the panel.
+    setOutcomesState([])
     // Waiting on the planner is not idle: no welcome screen over it.
     const release = holdWelcomeReturn()
     void planWalks(WALKS_PLANNER, at, wanted, controller.signal)

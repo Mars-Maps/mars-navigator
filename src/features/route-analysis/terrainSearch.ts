@@ -223,11 +223,14 @@ export async function searchLeg(
   const usable = (k: number) => !Number.isNaN(h[k]) && models[model[k]].cellKm <= c
   const start = nodeOf(L, a)
   const goal = nodeOf(L, b)
-  // A stop with no usable height after a model failed to read is a failed read, which a retry may mend.
+  // A stop with no usable height after a model the lattice could stand on
+  // failed to read is a failed read, which a retry may mend. A coarser model
+  // that failed could not have given the stop its ground, so it is not blamed.
+  const failedUsable = (failed ?? []).filter((f) => models[f.model] !== undefined && models[f.model].cellKm <= c)
   const offModel = (what: string) =>
     unavailable<SearchedLeg>(
-      failed && failed.length > 0
-        ? `No usable height at the ${what}: an elevation model could not be read (${failed.join('; ')})`
+      failedUsable.length > 0
+        ? `No usable height at the ${what}: an elevation model could not be read (${failedUsable.map((f) => f.reason).join('; ')})`
         : `No elevation model has a height at the ${what}, so there is no ground to search from`,
     )
   if (!usable(start)) return offModel('departure')

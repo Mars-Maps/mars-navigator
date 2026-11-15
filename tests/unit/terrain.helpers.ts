@@ -48,8 +48,8 @@ export interface FixtureOptions {
   gridCellKm?: number
   /** The grid's cell in degrees, as a real model states it; absent, the lattice steps `cellKm` on the mean sphere. */
   cellDeg?: number
-  /** Models named as failed to read, with the heights that did come back. */
-  failed?: string[]
+  /** Models named as failed to read (index into the fixture's models), with the heights that did come back. */
+  failed?: { model: number; reason: string }[]
   lines?: GeologicLineFeature[]
   /** The map read fails with this reason. */
   mapFails?: string

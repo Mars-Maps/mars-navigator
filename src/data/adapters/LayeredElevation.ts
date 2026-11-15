@@ -42,6 +42,12 @@ export interface SearchGrid {
   readsWhole: boolean
 }
 
+/** A model that could not be read: its index among the read's models, and "label: reason". */
+export interface FailedModel {
+  model: number
+  reason: string
+}
+
 /** Heights with the model each came from. */
 export interface SourcedHeights {
   /** NaN where no model has a height. */
@@ -51,11 +57,11 @@ export interface SourcedHeights {
   /** Each model, in chain order: provenance and cell size on one object, so they cannot drift apart. */
   sources: HeightModel[]
   /**
-   * The models that cover a point asked for and could not be read, each as
-   * "label: reason". A NaN height may then be a failed read, not ground no
-   * model covers; absent when every model asked answered.
+   * The models that cover a point asked for and could not be read: the index
+   * into `sources` and "label: reason". A NaN height may then be a failed
+   * read, not ground no model covers; absent when every model asked answered.
    */
-  failed?: readonly string[]
+  failed?: readonly FailedModel[]
 }
 
 /**
@@ -190,7 +196,7 @@ export class LayeredElevation {
     const sourceIndex = new Uint8Array(count)
     let remaining = Array.from({ length: count }, (_, i) => i)
     let lastFailure: string | null = null
-    const failed: string[] = []
+    const failed: FailedModel[] = []
     for (let k = 0; k < this.chain.length && remaining.length > 0; k++) {
       const adapter = this.chain[k]
       if (!include(adapter)) continue
@@ -205,7 +211,7 @@ export class LayeredElevation {
       if (signal.aborted) return unavailable('Cancelled')
       if (read.classification === 'UNAVAILABLE') {
         lastFailure = read.reason
-        failed.push(`${adapter.source.label}: ${read.reason}`)
+        failed.push({ model: k, reason: `${adapter.source.label}: ${read.reason}` })
         continue
       }
       asked.forEach((i, j) => {
