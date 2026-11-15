@@ -24,6 +24,7 @@ const render = (props: {
   canPick?: boolean
   settings?: MissionSettings
   useSelected?: boolean
+  site?: boolean
 }) =>
   renderToStaticMarkup(
     <GoalPickerView
@@ -32,6 +33,7 @@ const render = (props: {
       landing={props.landing === undefined ? LANDING : props.landing}
       landingProblem={props.landingProblem ?? null}
       picking={props.picking ?? false}
+      site={props.site ? { name: 'Fixture crater', onGoTo: () => {} } : undefined}
       onPickLanding={props.canPick === false ? undefined : () => {}}
       settings={props.settings ?? DEFAULT_MISSION_SETTINGS}
       onSettings={() => {}}
@@ -46,6 +48,25 @@ const render = (props: {
   )
 
 describe('GoalPickerView', () => {
+  it('says the tool works in and around the site only, with the button that goes there, on the landing step', () => {
+    const html = render({ step: 'landing', landing: null, site: true })
+    expect(html).toContain('works in and around <span class="text-ink">Fixture crater</span> only')
+    expect(html).toMatch(/<button type="button"[^>]*>Go to Fixture crater<\/button>/)
+  })
+
+  it('keeps that and the button on show while the panel is folded for the first click, which is when the tool has just opened', () => {
+    const html = render({ step: 'landing', landing: null, picking: true, site: true })
+    // Folded: the steps are not rendered.
+    expect(html).not.toContain('Steps of planning a walk')
+    expect(html).toContain('Fixture crater</span> only')
+    expect(html).toMatch(/>Go to Fixture crater<\/button>/)
+  })
+
+  it('says nothing of the site past the landing step, or where the view cannot be moved', () => {
+    expect(render({ step: 'settings', site: true })).not.toContain('Go to Fixture crater')
+    expect(render({ step: 'landing', landing: null })).not.toContain('Go to ')
+  })
+
   it('asks for no goal, and says where the walk lands', () => {
     const html = render({})
     expect(html).not.toContain('walk-goal')

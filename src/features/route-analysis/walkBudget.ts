@@ -72,6 +72,19 @@ function stretches(profile: ElevationProfile): Stretch[] {
   return out
 }
 
+/**
+ * `first` then `then` as one walk: `then`'s distances carried on from
+ * where `first` ends. For a walk whose way back is read apart from its way
+ * out. Where `then` starts on `first`'s last point the two samples there
+ * are no distance apart and cost nothing.
+ */
+export function joinProfiles(first: ElevationProfile, then: ElevationProfile): ElevationProfile {
+  const offset = first.samples.length > 0 ? first.samples[first.samples.length - 1].distanceKm : 0
+  const base = then.samples.length > 0 ? then.samples[0].distanceKm : 0
+  const samples = [...first.samples, ...then.samples.map((s) => ({ ...s, distanceKm: offset + (s.distanceKm - base) }))]
+  return { samples, totalDistanceKm: samples.length > 0 ? samples[samples.length - 1].distanceKm : 0 }
+}
+
 export interface WalkBudget {
   /** Along the path, km. */
   distanceKm: Classified<number>
@@ -204,6 +217,13 @@ export interface PlaceSamplesOptions {
    * waypoints), taken in order of distance in place of even spacing.
    */
   placesKm?: readonly number[]
+  /**
+   * Km along the path where the way out ends: no sample beyond it, and the
+   * even spacing is over the path up to it. For a walk that comes back the
+   * way it went, where the ground past this point is the ground already
+   * sampled. The whole path without.
+   */
+  uptoKm?: number
 }
 
 export interface SamplePlacement {
@@ -225,11 +245,14 @@ export function placeSamples(profile: ElevationProfile, count: number, options: 
   if (parts.length === 0) return unavailable(WALK_BUDGET_REASONS.tooShort)
   const minKm = (options.minSpacingM ?? MIN_SAMPLE_SPACING_M) / 1000
   const want = Math.max(0, Math.floor(count))
-  const allowed = mergeIntervals(
-    parts.filter((p) => p.slopeDeg <= options.maxSlopeDeg).map((p): [number, number] => [p.fromKm, p.toKm]),
-  )
-  const totalKm = parts[parts.length - 1].toKm - parts[0].fromKm
   const startKm = parts[0].fromKm
+  const endKm = Math.max(startKm, Math.min(parts[parts.length - 1].toKm, options.uptoKm ?? Infinity))
+  const allowed = mergeIntervals(
+    parts
+      .filter((p) => p.slopeDeg <= options.maxSlopeDeg && p.fromKm < endKm)
+      .map((p): [number, number] => [p.fromKm, Math.min(p.toKm, endKm)]),
+  )
+  const totalKm = endKm - startKm
   const targets = options.placesKm
     ? [...options.placesKm].filter(Number.isFinite).sort((a, b) => a - b)
     : Array.from({ length: want }, (_, i) => startKm + (totalKm * (i + 1)) / (want + 1))
@@ -258,7 +281,8 @@ export function placeSamples(profile: ElevationProfile, count: number, options: 
     dwellMin: SAMPLE_MINUTES,
   }))
   const spacing = `never two closer than ${minKm * 1000} m (a project choice)`
-  const where = options.placesKm ? "at the walk's own places" : 'evenly spaced by distance along the walk'
+  const along = options.uptoKm === undefined ? 'along the walk' : 'along the way out, none on the way back'
+  const where = options.placesKm ? "at the walk's own places" : `evenly spaced by distance ${along}`
   const value = { samples, missing: want - samples.length }
   if (want > 0 && samples.length === 0) return unavailable(WALK_BUDGET_REASONS.noRoom)
   return derived(

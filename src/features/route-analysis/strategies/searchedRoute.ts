@@ -2,14 +2,16 @@ import {
   SUITED_SLOPE_LIMIT,
   derived,
   official,
+  unavailable,
   type MarsCoordinate,
   type RouteOption,
   type RouteRequest,
   type RouteStrategy,
   type SurfacePoint,
 } from '../../../domain'
-import { detectHazards } from '../hazards'
+import { HAZARD_DETECTORS, scanHazards, type HazardDetector } from '../hazards'
 import { OBSTACLE_KINDS } from '../mappedObstacles'
+import type { MappedObstacleScan } from '../routeObstacles'
 import { METABOLIC_COST_METHOD, walkingKcalPerKm } from '../metabolicCost'
 import { searchLeg, type SearchedLeg, type StepCost } from '../terrainSearch'
 import { WALKING_SPEED_METHOD, suitedWalkingKmh } from '../walkingSpeed'
@@ -66,8 +68,8 @@ function samePoint(a: MarsCoordinate, b: MarsCoordinate): boolean {
 
 /**
  * What the search kept off this route's path, by hazard kind, in the
- * method's own words: for the hazards panel, where a kind with no
- * detector would otherwise read only "not scanned". Empty for a route that
+ * method's own words: for the hazards panel, beside what the scans of the
+ * path found. Empty for a route that
  * was not searched (shortest, or a search that found no path); no
  * `mapped-obstacle` entry where the map was not read for every leg, since
  * then the lines were not kept off. It says what was avoided, never that
@@ -127,7 +129,22 @@ export async function planSearchedRoute(
     }
     legs.push(leg.value)
   }
-  return searchedOption(strategy, request, legs, walked, search)
+  // The scan of what the map marks along the path is read here, on the first
+  // searched route, not with the app: it is the one part of a route's
+  // hazards that is not needed until a route exists. If its file cannot be
+  // read (offline, or a deploy since the page loaded) the route is still
+  // drawn, with mapped obstacles not scanned, as before the scan existed.
+  const mappedObstacleScan = await import('../routeObstacles').then(
+    (m) => m.mappedObstacleScan,
+    () => null,
+  )
+  return searchedOption(strategy, request, legs, walked, search, mappedObstacleScan)
+}
+
+/** In place of the mapped-obstacle scan when its module could not be read: not scanned, with that reason. */
+const SCAN_NOT_LOADED: HazardDetector = {
+  ...HAZARD_DETECTORS['mapped-obstacle'],
+  detect: () => unavailable('The scan of what the geologic map marks could not be loaded; plan the route again to retry'),
 }
 
 /** The option from the legs found; `numbers` are the legs' places in the user's list, a skipped leg counted. */
@@ -137,6 +154,7 @@ function searchedOption(
   legs: SearchedLeg[],
   numbers: number[],
   search: SearchCost,
+  mappedObstacleScan: MappedObstacleScan | null,
 ): RouteOption {
   const methods = [...new Set(legs.map((leg) => leg.method))]
   const searchMethod = methods.length === 1 ? methods[0] : `Per leg: ${methods.join(' / ')}`
@@ -177,6 +195,12 @@ function searchedOption(
   const hours = steps.reduce((sum, step) => sum + step.km / suitedWalkingKmh(step.s), 0)
   const kcal = steps.reduce((sum, step) => sum + step.km * walkingKcalPerKm(step.s), 0)
   const unchecked = legs.flatMap((leg, l) => (leg.obstacles.checked ? [] : [`leg ${numbers[l]}: ${leg.obstacles.reason}`]))
+  const mapped = mappedObstacleScan?.(strategy, legs, numbers) ?? null
+  // Along every walked node, not the path's turns: the slope scan would average a straight run away
+  // (the mapped-obstacle detector goes by the legs it was made from, not by these points).
+  const scan = scanHazards(walked, { ...HAZARD_DETECTORS, 'mapped-obstacle': mapped ? mapped.detector : SCAN_NOT_LOADED })
+  const gaps = mapped?.gaps ?? []
+  const partly = gaps.length > 0 && scan.scanned.includes('mapped-obstacle')
   const obstacles =
     unchecked.length === 0
       ? LINES_KEPT_OFF
@@ -198,7 +222,11 @@ function searchedOption(
       durationHours: derived(hours, `Sum over the path's steps of length over walking speed. ${WALKING_SPEED_METHOD}`),
       metabolicEnergyKcal: derived(kcal, `Sum over the path's steps of length times the cost of walking its slope. ${METABOLIC_COST_METHOD}`),
     },
-    // The walked nodes carry heights, so the scans run along every step; `points` have none.
-    hazards: detectHazards(walked),
+    // The walked nodes carry heights, so the slope and shielding scans run along every step; `points` have none.
+    // What the map marks is scanned along each leg's own path, with the features its search read.
+    hazards: scan.hazards,
+    // A kind scanned over part of the route is not "scanned": the panel says which part was not.
+    hazardsScanned: partly ? scan.scanned.filter((k) => k !== 'mapped-obstacle') : scan.scanned,
+    ...(partly ? { hazardsPartlyScanned: { 'mapped-obstacle': `Not checked: ${gaps.join('; ')}` } } : {}),
   }
 }

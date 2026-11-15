@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { extentQueryUrl, parseFeatureList, pointQueryUrl, readPaths, readPoint, toSignedLongitude, type FeatureIo } from '../../src/data/adapters/arcgisFeatures'
 import { geologicFeatures, geologicUnitAreas, geologicUnitAt } from '../../src/data/adapters/GeologyAdapter'
-import { SIM_3292 } from '../../src/data/geology/geologySources'
+import { JEZERO_UNITS, SIM_3292 } from '../../src/data/geology/geologySources'
 import { JEZERO, SIM_3464 } from '../../src/data/sites/sites'
 import type { Classified } from '../../src/domain'
 
@@ -181,6 +181,8 @@ describe('geologicFeatures', () => {
     expect(result.value.points).toEqual([{ kind: 'small crater', at: { latitude: 18.45, longitudeEast: 77.45 }, map: SIM_3464 }])
     expect(result.value.lines.map((l) => l.kind)).toEqual(['ridge crest (type 1), certain', 'ridge crest (type 1), certain'])
     expect(result.value.areas[0].kind).toBe('dark-colored mantling material')
+    // The sheet the features come from: a route scan reads it to tell "nothing marked" from "not mapped".
+    expect(result.value.covers).toEqual(JEZERO_UNITS.sheet)
   })
 
   it('all three layers or none', async () => {

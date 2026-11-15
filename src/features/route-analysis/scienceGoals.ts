@@ -202,6 +202,25 @@ function renumbered(goal: ScienceGoal, stop: WalkStop, unit: Classified<Geologic
   return { ...stop, id: `${goal.id}-${n}`, label: name === null ? stopName(n) : `${stopName(n)} · ${name}`, unit, reason }
 }
 
+/** What the walk's last stop is called: the landing site, come back to. */
+export const RETURN_STOP_LABEL = 'Return · landing site'
+
+/** Why the walk's last stop is there, and how the way to it is treated. */
+export const RETURN_STOP_REASON = derived(
+  'The landing site again: the walk ends where it began, so the way back is in its distance, time and energy',
+  'The straight line back to the landing site from the last place visited, walked, costed and checked against the mission settings as every other leg is. The places visited are chosen so that the walk out and the way back fit the settings together',
+)
+
+/**
+ * The stop that closes a walk: back at `start`, the walk's first stop, as
+ * its `n`th point (1-based, as the ids count). Every walk of Plan a walk
+ * ends with one, so the time and the energy it is checked on are those of
+ * going out and of coming back.
+ */
+export function returnStop(goal: ScienceGoal, n: number, start: WalkStop): WalkStop {
+  return { id: `${goal.id}-${n}`, label: RETURN_STOP_LABEL, coordinate: start.coordinate, unit: start.unit, reason: RETURN_STOP_REASON }
+}
+
 /**
  * The name of the walk's `n`th point, 1-based, the start being the first:
  * the start is "Start", so the stops after it count from 1, as the

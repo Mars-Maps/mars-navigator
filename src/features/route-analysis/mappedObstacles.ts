@@ -33,8 +33,8 @@ export const OBSTACLE_KINDS = {
 /** How near the leg a marked crater is flagged, km. A project choice, not a cited figure. */
 export const CRATER_NEAR_KM = 0.1
 
-const isKind = (kinds: readonly string[], kind: string) => kinds.includes(kind)
-const named = (map: GeologicMap) => `${map.id} (${map.citation})`
+export const isKind = (kinds: readonly string[], kind: string) => kinds.includes(kind)
+export const named = (map: GeologicMap) => `${map.id} (${map.citation})`
 
 /** The leg's mapped obstacles in walking order, ids `${idBase}-obstacle-n`. */
 export function mappedObstacleHazards(
@@ -129,7 +129,7 @@ export function segmentCrossing(a: Xy, b: Xy, c: Xy, d: Xy): (Xy & { t: number }
 }
 
 /** The fraction along ab nearest `c`, and how far `c` is from it. */
-function nearestOnLeg(c: Xy, a: Xy, b: Xy): { t: number; km: number } {
+export function nearestOnLeg(c: Xy, a: Xy, b: Xy): { t: number; km: number } {
   const dx = b.x - a.x
   const dy = b.y - a.y
   const len2 = dx * dx + dy * dy
@@ -138,7 +138,7 @@ function nearestOnLeg(c: Xy, a: Xy, b: Xy): { t: number; km: number } {
 }
 
 /** The first point of ab inside the polygon: a itself, or where ab first crosses an edge. Null when it stays outside. */
-function firstInside(a: Xy, b: Xy, rings: readonly Xy[][]): (Xy & { t: number }) | null {
+export function firstInside(a: Xy, b: Xy, rings: readonly Xy[][]): (Xy & { t: number }) | null {
   if (insideRings(a, rings)) return { ...a, t: 0 }
   let first: (Xy & { t: number }) | null = null
   for (const ring of rings) {

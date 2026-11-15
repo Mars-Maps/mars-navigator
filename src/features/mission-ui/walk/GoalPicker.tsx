@@ -21,9 +21,19 @@ import { LegDetail } from './LegDetail'
 import { MissionSettingsStep } from './MissionSettingsStep'
 import { settingsValid, type MissionSettings } from './missionSettings'
 import { WalkCards } from './WalkCards'
-import type { WalkOption } from './walkCardFigures'
+import { stopsPhrase, type WalkOption } from './walkCardFigures'
 import { WalkPlanMap } from './WalkPlanMap'
 import { WALK_STEPS, minimisedLegendMethod, stepOpen, type WalkStep } from './walkSteps'
+
+/**
+ * Step 3 is the tall one (three cards, the map, every leg) and is read
+ * beside the walk drawn on the globe, so it moves out of the middle: to the
+ * right, 5 rem from the edge (clear of the icon column), and up over the
+ * walker widget in that corner. The dock's slot is 24 rem wide and centred,
+ * so the shift is half the window less half the panel and the gap; never to
+ * the left on a narrow window. Shorter by the lift, so its top stays under the time bar.
+ */
+const WALKS_AT_THE_RIGHT = 'max-h-[calc(100vh-15rem)] translate-x-[max(0px,calc(50vw-17rem))] -translate-y-16'
 
 /** Where the shell's planning is: nothing asked yet, working, or why it could not plan. */
 export type PlanStatus = { kind: 'idle' } | { kind: 'planning' } | { kind: 'failed'; reason: string }
@@ -47,6 +57,7 @@ export function GoalPickerView({
   landingProblem,
   landingRating,
   landingColours,
+  site,
   picking,
   onPickLanding,
   settings,
@@ -60,6 +71,8 @@ export function GoalPickerView({
   onPlan,
   canStand,
   onStand,
+  canNavigate = false,
+  onNavigate,
 }: {
   /** The step on show; the shell keeps it to one that can be opened (`shownStep`). */
   step: WalkStep
@@ -70,6 +83,13 @@ export function GoalPickerView({
   landingRating?: Classified<LandingReading>
   /** The landing colours drawn on the map while the first step is open, for their legend. */
   landingColours?: LandingColoursStatus
+  /**
+   * The one place the tool works, and the way there: the panel says a walk
+   * is planned in and around it only, and its button flies the view to it,
+   * where the landing colours are drawn. Absent where the view cannot be
+   * moved from here (navigation), and nothing is said.
+   */
+  site?: { name: string; onGoTo: () => void }
   /** The next click on the map sets the landing site. */
   picking: boolean
   /** Turns the pick on; absent where the globe cannot be clicked. */
@@ -94,6 +114,10 @@ export function GoalPickerView({
   canStand: boolean
   /** Stand on the ground at the plan's first stop. */
   onStand: () => void
+  /** False where the walk cannot be handed to navigation (the welcome screen, or a route already being followed); the panel says so. */
+  canNavigate?: boolean
+  /** Hands the plan on show to navigation; absent where no route planner is given. */
+  onNavigate?: () => void
 }) {
   const { minimized: chosen, toggle, bodyId } = useMinimized()
   // While the landing pick waits for its first click, the panel folds to its
@@ -119,10 +143,16 @@ export function GoalPickerView({
 
   // No ×: the dock's button closes a tool's panel.
   return (
-    <Panel surface="glass" compact={minimized} className="max-h-[calc(100vh-10rem)] w-full overflow-y-auto">
+    <Panel
+      surface="glass"
+      compact={minimized}
+      className={`w-full overflow-y-auto ${step === 'walks' && !minimized ? WALKS_AT_THE_RIGHT : 'max-h-[calc(100vh-10rem)]'}`}
+    >
       <PanelHeader title="Plan a walk" minimized={minimized} onToggleMinimized={onToggle} bodyId={bodyId} spacing="mb-3">
         <h2 className="text-heading font-semibold text-ink">Plan a walk</h2>
       </PanelHeader>
+      {/* Above the fold: the panel folds while the pick waits for its first click, which is when the tool has just been opened. */}
+      {site && step === 'landing' && <SiteOnly name={site.name} onGoTo={site.onGoTo} />}
       {/* The colours stay on the map while the panel is minimised, so what they are stays on show too. */}
       {legendMethod !== null && <LandingLegendLine method={legendMethod} />}
       {minimized ? null : (
@@ -190,22 +220,58 @@ export function GoalPickerView({
           {step === 'walks' && walks && walks.length > 0 && onSelectWalk && (
             <WalkCards walks={walks} selectedKind={plan?.kind ?? null} onSelect={onSelectWalk} />
           )}
-          {step === 'walks' && plan && <PlanSummary plan={plan} canStand={canStand} onStand={onStand} />}
+          {step === 'walks' && plan && (
+            <PlanSummary plan={plan} canStand={canStand} onStand={onStand} canNavigate={canNavigate} onNavigate={onNavigate} />
+          )}
         </div>
       )}
     </Panel>
   )
 }
 
+/**
+ * Where the tool works and the way there. The landing colours are drawn
+ * over the site only, so from anywhere else the map shows none: the button
+ * centres the view on the site, where they are.
+ */
+function SiteOnly({ name, onGoTo }: { name: string; onGoTo: () => void }) {
+  return (
+    <div className="mb-2 flex flex-col items-start gap-1.5">
+      <p className="text-caption text-ink-muted">
+        This tool works in and around <span className="text-ink">{name}</span> only: a walk is planned there, and the landing
+        colours are drawn there and nowhere else on the map.
+      </p>
+      <button
+        type="button"
+        onClick={onGoTo}
+        className="rounded-control border border-accent/50 bg-accent/15 px-3 py-1 text-body text-accent transition-colors duration-(--duration-fast) hover:border-accent/80 hover:bg-accent/25"
+      >
+        Go to {name}
+      </button>
+    </div>
+  )
+}
+
 /** The plan in the store: its goal, each stop with the leg that reaches it, and the way onto the ground. */
-function PlanSummary({ plan, canStand, onStand }: { plan: WalkPlan; canStand: boolean; onStand: () => void }) {
+function PlanSummary({
+  plan,
+  canStand,
+  onStand,
+  canNavigate,
+  onNavigate,
+}: {
+  plan: WalkPlan
+  canStand: boolean
+  onStand: () => void
+  canNavigate: boolean
+  onNavigate?: () => void
+}) {
   return (
     <section aria-label="Planned walk" className="flex flex-col gap-1.5">
       <p className="flex items-center gap-1.5 text-caption text-ink-subtle">
         <span>
-          {/* The start is not a numbered stop: "the start and 3 stops" for Start, Stop 1–3. */}
-          Planned: <span className="text-ink">{plan.goal.label}</span>, the start and{' '}
-          {plan.stops.length - 1 === 1 ? '1 stop' : `${plan.stops.length - 1} stops`}
+          {/* Neither the start nor the way back is a numbered stop: "the start, 3 stops and the way back". */}
+          Planned: <span className="text-ink">{plan.goal.label}</span>, {stopsPhrase(plan.stops)}
         </span>
         <ClassificationBadge classification={plan.goal.reason.classification} detail={detailOf(plan.goal)} />
       </p>
@@ -247,6 +313,21 @@ function PlanSummary({ plan, canStand, onStand }: { plan: WalkPlan; canStand: bo
         Stand at the start
       </button>
       {!canStand && <p className="text-caption text-ink-muted">End navigation to stand on the ground.</p>}
+      {/* The walk as a route: from the landing site, through its stops, and back. */}
+      {onNavigate && (
+        <button
+          type="button"
+          disabled={!canNavigate}
+          onClick={onNavigate}
+          title="Navigate from the landing site through this walk's stops and back: by the fastest or the most energy-efficient way found on the terrain, or straight between the stops"
+          className="w-full rounded-control border border-line px-3 py-2 text-body text-ink transition-colors duration-(--duration-fast) hover:bg-surface-raised disabled:cursor-not-allowed disabled:text-ink-subtle/60"
+        >
+          Navigate this walk
+        </button>
+      )}
+      {onNavigate && !canNavigate && (
+        <p className="text-caption text-ink-muted">A walk is navigated from the map view: end the route being followed first.</p>
+      )}
       <ol className="flex flex-col gap-2">
         {plan.stops.map((stop, i) => {
           const leg = i > 0 ? plan.legs[i - 1] : null

@@ -24,6 +24,7 @@ import { ErrorBoundary, FailedPart, LoadingPart } from './ErrorBoundary'
 import { profileHeights, surfaceElevation } from './elevation'
 import { routeTerrain } from './routeTerrain'
 import { useRoutePlanner } from './useRoutePlanner'
+import { WALK_ROUTE_STRATEGIES } from './walkNavigation'
 import { pathOfRoute } from './routeProfile'
 import { useSampleWalkPlan } from './sampleWalk'
 import { SampleWalkBanner } from './SampleWalkBanner'
@@ -220,7 +221,7 @@ export default function App() {
               'plan-walk': (
                 <ErrorBoundary fallback={() => <FailedPart what="Plan a walk" panel />}>
                   <Suspense fallback={<LoadingPart what="the walk planner" />}>
-                    <WalkPlannerPanel />
+                    <WalkPlannerPanel onNavigate={(request) => planRoute(request, WALK_ROUTE_STRATEGIES)} />
                   </Suspense>
                 </ErrorBoundary>
               ),

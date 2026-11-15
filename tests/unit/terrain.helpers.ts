@@ -3,8 +3,10 @@ import {
   official,
   unavailable,
   type Classified,
+  type GeologicAreaFeature,
   type GeologicFeatures,
   type GeologicLineFeature,
+  type GeologicPointFeature,
   type GeologicMap,
   type GeologicUnitArea,
   type MarsCoordinate,
@@ -51,8 +53,15 @@ export interface FixtureOptions {
   /** Models named as failed to read (index into the fixture's models), with the heights that did come back. */
   failed?: { model: number; reason: string }[]
   lines?: GeologicLineFeature[]
+  /** The map's point features (small craters) and area features (ridged ground); none by default. */
+  mapPoints?: GeologicPointFeature[]
+  mapAreas?: GeologicAreaFeature[]
   /** The map read fails with this reason. */
   mapFails?: string
+  /** The map read fails, with `mapFails` or "Map service down", for the boxes this accepts (one leg of several). */
+  mapFailsFor?: (bounds: { west: number; east: number; south: number; north: number }) => boolean
+  /** The sheet the fixture map covers, as a real map with edges states it. */
+  mapCovers?: { west: number; east: number; south: number; north: number }
   /** The elevation read fails with this reason. */
   demFails?: string
   /** The map's unit polygons; none by default. */
@@ -94,9 +103,18 @@ export function fixtureTerrain(z: (x: number, y: number) => number, options: Fix
     },
     obstacles: (bounds) => {
       boxes.push(bounds)
-      const features: Classified<GeologicFeatures> = options.mapFails
-        ? unavailable(options.mapFails)
-        : official({ points: [], lines: options.lines ?? [], areas: [] }, 'fixture map')
+      const fails = options.mapFailsFor ? options.mapFailsFor(bounds) : options.mapFails !== undefined
+      const features: Classified<GeologicFeatures> = fails
+        ? unavailable(options.mapFails ?? 'Map service down')
+        : official(
+            {
+              points: options.mapPoints ?? [],
+              lines: options.lines ?? [],
+              areas: options.mapAreas ?? [],
+              ...(options.mapCovers ? { covers: options.mapCovers } : {}),
+            },
+            'fixture map',
+          )
       return Promise.resolve(features)
     },
     units: () =>
