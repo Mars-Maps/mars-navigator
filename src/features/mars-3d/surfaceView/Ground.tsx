@@ -125,6 +125,8 @@ export function Ground({
     retryAt: 0,
     /** The first patch threw; retry it, since the walker cannot move yet. */
     startFailed: false,
+    /** The last build came to nothing; its retry reads the heights before starting any tiles. */
+    lastFailed: false,
     readoutAt: 0,
     /** True north at the walker, radians clockwise from the patch's +y; null near a pole. Updated with the readout. */
     northRad: null as number | null,
@@ -178,7 +180,7 @@ export function Ground({
       r.building = controller
       const { sources: s } = latest.current
       const options = { ...s, maxAnisotropy: gl.capabilities.getMaxAnisotropy() }
-      void buildGroundPatch(centre, options, controller.signal).then((result) => {
+      void buildGroundPatch(centre, options, controller.signal, undefined, !r.lastFailed).then((result) => {
         if (controller.signal.aborted) {
           if (result.status === 'ready') result.patch.dispose()
           return
@@ -186,6 +188,7 @@ export function Ground({
         r.building = null
         if (result.status === 'ready') {
           r.startFailed = false
+          r.lastFailed = false
           setPatch(result.patch)
         } else if (result.status === 'unavailable') {
           unavailable(result.reason)
@@ -201,6 +204,7 @@ export function Ground({
     }
     const unavailable = (reason: string) => {
       r.retryAt = performance.now() + RETRY_MS
+      r.lastFailed = true
       if (!r.active) latest.current.onStatus({ kind: 'unavailable', reason })
       else if (r.provenance) {
         r.edge = reason

@@ -20,6 +20,7 @@ import { ROUTE_LIFT } from './overlayLift'
 import { MEASURE_COLOR } from './MeasureLine'
 import { createPathDotMaterial } from './pathDots'
 import { ROUTE_PIN_COLOR, TERRAIN_POINT_COLOR } from './pinColors'
+import { RouteHazardPoints } from './RouteHazardPoints'
 import { RouteHoverMarker } from './RouteHoverMarker'
 import { PIN_ANIMATION_S, pinPose } from './pinAnimation'
 import { coordinateToLocalPoint } from './projection'
@@ -126,8 +127,7 @@ function buildPinGeometry(points: readonly KeyedPoint[]): InstancedBufferGeometr
 }
 
 /**
- * Departure, stops, destination and marked points as map pins on the globe,
- * with a trail of dots joining the waypoints in order along great
+ * Departure, stops, destination and marked points as map pins on the globe, with a trail of dots joining the waypoints in order along great
  * circles (pathDots.ts). Mount inside the globe mesh so it spins and tilts
  * with the surface.
  *
@@ -267,6 +267,7 @@ export function RouteOverlay() {
 
   return (
     <group ref={groupRef}>
+      <RouteHazardPoints />
       <RouteHoverMarker />
       <WalkPlanOverlay />
     </group>
