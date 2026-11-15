@@ -21,7 +21,7 @@ import {
 } from '../domain'
 import { CRATER_NEAR_KM } from '../features/route-analysis/mappedObstacles'
 import { farthestFromRoverPath } from '../features/route-analysis/provenGround'
-import { DEFAULT_MAX_WALK_KM, SCIENCE_GOALS, candidateStops, confirmStops, stopReason } from '../features/route-analysis/scienceGoals'
+import { DEFAULT_MAX_WALK_KM, SCIENCE_GOALS, candidateStops, confirmStops, returnStop, stopReason } from '../features/route-analysis/scienceGoals'
 import { walkLegs, type CellKmAlong, type WalkHeights } from '../features/route-analysis/walkLegs'
 import type { WalkDraft } from './planWalks'
 import type { PlanStatus } from '../features/mission-ui/walk/GoalPicker'
@@ -95,16 +95,20 @@ export function createWalkPlanner(sources: WalkPlannerSources): WalkPlanner {
       if (draft.classification === 'UNAVAILABLE') return draft
       // Each stop's unit as the map answers for its exact point, as the single-goal planner does.
       const reads = await Promise.all(draft.value.stops.map((s) => sources.unitAt(s.coordinate, signal)))
-      const { reachKm, placements, samples } = draft.value
-      const stops = confirmStops(FLAT_BEDROCK_GOAL, draft.value.stops, reads, reachKm, (unit, stop) =>
-        stopReason(FLAT_BEDROCK_GOAL, unit, reachKm, { placement: placements[stop.id], reachBasis: FLAT_BEDROCK_REACH_BASIS }),
+      const { outKm, placements, samples } = draft.value
+      const stops = confirmStops(FLAT_BEDROCK_GOAL, draft.value.stops, reads, outKm, (unit, stop) =>
+        stopReason(FLAT_BEDROCK_GOAL, unit, outKm, { placement: placements[stop.id], reachBasis: FLAT_BEDROCK_REACH_BASIS }),
       )
       // Every stop after the landing site was there, so the map's reads dropped them all.
       if (stops.length < 2) return unavailable(FLAT_BEDROCK_REASONS.otherUnits)
-      // On the stops as confirmed: a dropped stop changes the walk the places lie along.
-      const placesKm = floorSamplePlacesKm(stops.map((s) => s.coordinate), units.value, samples)
+      // On the stops as confirmed: a dropped stop changes the walk the places lie along. On the way
+      // out only: the way back is for coming back, and over one polygon it is the ground already sampled.
+      const placesFor = (path: readonly MarsCoordinate[]) => floorSamplePlacesKm(path, units.value, samples)
+      const placesKm = placesFor(stops.map((s) => s.coordinate))
       const method = draft.classification === 'DERIVED' ? draft.method : draft.source
-      return derived({ goal: FLAT_BEDROCK_GOAL, stops, ...(placesKm.length > 0 ? { placesKm } : {}) }, method)
+      // The walk ends where it began. A stop the map dropped only shortens it, so the reach still holds.
+      const closed = [...stops, returnStop(FLAT_BEDROCK_GOAL, stops.length + 1, stops[0])]
+      return derived({ goal: FLAT_BEDROCK_GOAL, stops: closed, ...(placesKm.length > 0 ? { placesKm, placesFor } : {}) }, method)
     },
   }
 }

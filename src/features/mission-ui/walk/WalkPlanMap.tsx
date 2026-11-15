@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { ClassificationBadge } from '../../../components/ClassificationBadge'
 import { isAvailable, type WalkPlan } from '../../../domain'
+import { endsAtStart, stopsPhrase } from './walkCardFigures'
 import { walkMapLayout } from './walkMap'
 
 const WIDTH = 320
@@ -28,9 +29,11 @@ export function WalkPlanMap({ plan }: { plan: WalkPlan }) {
   const obstacles = layout.flags.length - slopes
   const unchecked = layout.legs.filter((leg) => leg.notFullyChecked).length
   const barLeft = WIDTH - 10 - layout.scale.length
+  // The way back ends on the start's own mark, which keeps its "S": no number is drawn over it.
+  const closing = endsAtStart(plan.stops) ? plan.stops.length - 1 : -1
   const label = [
     // The start is not a numbered stop, as the panel and the marks say.
-    `Diagram of the planned walk, north up: the start and ${count(plan.stops.length - 1, 'stop', 'stops')}`,
+    `Diagram of the planned walk, north up: ${stopsPhrase(plan.stops)}`,
     count(slopes, 'slope flag', 'slope flags'),
     count(obstacles, 'mapped obstacle', 'mapped obstacles'),
     ...(unchecked > 0 ? [count(unchecked, 'leg not fully checked', 'legs not fully checked')] : []),
@@ -59,9 +62,11 @@ export function WalkPlanMap({ plan }: { plan: WalkPlan }) {
           <g key={plan.stops[i].id}>
             <circle cx={s.x} cy={s.y} r={STOP_R} className="fill-ink" />
             {/* As the panel names them: the start is "S", then Stop 1, Stop 2 …. */}
-            <text x={s.x + STOP_R + 2} y={s.y - STOP_R} className="fill-ink text-[11px] font-semibold">
-              {i === 0 ? 'S' : i}
-            </text>
+            {i !== closing && (
+              <text x={s.x + STOP_R + 2} y={s.y - STOP_R} className="fill-ink text-[11px] font-semibold">
+                {i === 0 ? 'S' : i}
+              </text>
+            )}
           </g>
         ))}
         {/* Over the stops: a flag can fall on one, and must still show. */}

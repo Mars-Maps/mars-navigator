@@ -59,12 +59,12 @@ export const FLAT_BEDROCK_REASONS = {
     `The ${settings.durationMin} min duration leaves no time to walk after even one sample of ${SAMPLE_MINUTES} min`,
   noEnergy: (settings: MissionSettings) => `The ${settings.energyKcal} kcal energy budget leaves nothing to walk on`,
   noFloor: (reachKm: number) =>
-    `No ground of the crater-floor units (${FLAT_BEDROCK_GOAL.unitNames.join(', ')}) is within ${reachKm.toFixed(2)} km of the landing site, as far as the settings let the walk go`,
+    `No ground of the crater-floor units (${FLAT_BEDROCK_GOAL.unitNames.join(', ')}) is within ${reachKm.toFixed(2)} km of the landing site, as far as the settings let the walk go and still come back`,
   otherUnits: "The map's read at each stop's exact point names another unit than the crater floor's, so no stop is left on it",
 } as const
 
 /** What bounds the walk's reach, in a stop's reason: the settings, not a fixed range. */
-export const FLAT_BEDROCK_REACH_BASIS = 'as far as the mission settings let the walk go on level ground'
+export const FLAT_BEDROCK_REACH_BASIS = 'as far as the mission settings let the walk go on level ground and come back to the landing site'
 
 /**
  * How many samples the walk keeps time for: the settings' count, or fewer
@@ -80,10 +80,13 @@ export function flatBedrockSamples(settings: MissionSettings): number | null {
 }
 
 /**
- * How far the walk may go in all, km, before its heights are read: the
+ * How far the walk may go in all, out and back to the landing site, km,
+ * before its heights are read: the
  * shorter of what the time left after the samples and the energy budget
- * allow on level ground, and no farther than the map is read around the
- * landing site (`DEFAULT_MAX_WALK_KM`). Level ground is the walk's own
+ * allow on level ground, and no more than twice as far as the map is read
+ * around the landing site (`DEFAULT_MAX_WALK_KM`): a walk that long, out
+ * and straight back, is the longest whose farthest stop is still on the
+ * ground read. Level ground is the walk's own
  * premise; the shell then costs the walk on its real heights and reports
  * any limit it still breaks.
  */
@@ -94,19 +97,21 @@ export function flatBedrockReachKm(settings: MissionSettings): Classified<number
   if (!(settings.energyKcal > 0)) return unavailable(FLAT_BEDROCK_REASONS.noEnergy(settings))
   const byTime = (walkingMin / 60) * suitedWalkingKmh(0)
   const byEnergy = settings.energyKcal / walkingKcalPerKm(0)
-  const km = Math.min(byTime, byEnergy, DEFAULT_MAX_WALK_KM)
+  const km = Math.min(byTime, byEnergy, 2 * DEFAULT_MAX_WALK_KM)
   return derived(
     km,
-    `The shorter of ${byTime.toFixed(2)} km (the ${walkingMin} min left after ${samples} samples of ${SAMPLE_MINUTES} min${samples < settings.samples ? `, fewer than the ${settings.samples} asked for so that there is time to walk` : ''}, at the level-ground pace) and ${byEnergy.toFixed(2)} km (the ${settings.energyKcal} kcal budget at the level-ground cost), and at most ${DEFAULT_MAX_WALK_KM} km, as far as the map is read. ${WALKING_SPEED_METHOD}`,
+    `The shorter of ${byTime.toFixed(2)} km (the ${walkingMin} min left after ${samples} samples of ${SAMPLE_MINUTES} min${samples < settings.samples ? `, fewer than the ${settings.samples} asked for so that there is time to walk` : ''}, at the level-ground pace) and ${byEnergy.toFixed(2)} km (the ${settings.energyKcal} kcal budget at the level-ground cost), and at most ${2 * DEFAULT_MAX_WALK_KM} km, so that no stop is farther than the ${DEFAULT_MAX_WALK_KM} km the map is read to. That is the whole walk, the way back to the landing site included. ${WALKING_SPEED_METHOD}`,
   )
 }
 
 export interface FlatBedrockDraft {
   goal: ScienceGoal
-  /** The landing site, then the stops in walking order. */
+  /** The landing site, then the stops in walking order. The way back is not among them: the shell closes the walk once the map has confirmed them (`returnStop`). */
   stops: WalkStop[]
-  /** The walk's length allowance the stops were chosen within, km. */
+  /** The walk's length allowance the stops were chosen within, the way back included, km. */
   reachKm: number
+  /** The farthest a stop can be from the landing site, km: half the reach, since the walk comes back. */
+  outKm: number
   /** How many samples the reach keeps time for (`flatBedrockSamples`). */
   samples: number
   /** How each stop after the landing site was placed, by its id, for its reason once the map confirms it. */
@@ -118,7 +123,8 @@ export interface FlatBedrockDraft {
  * crater-floor units, within the walk's reach. The candidates are
  * `candidateStops`' (one per floor polygon, the point of it nearest the
  * landing site, in nearest-neighbour order); a stop is kept while the walk
- * to it, stop to stop, stays within the reach. UNAVAILABLE with the reason
+ * to it, stop to stop, and the straight line back from it to the landing
+ * site stay within the reach together. UNAVAILABLE with the reason
  * when the settings leave no walk or no floor ground is within reach.
  */
 export function flatBedrockStops(
@@ -129,10 +135,12 @@ export function flatBedrockStops(
   const reach = flatBedrockReachKm(settings)
   if (reach.classification === 'UNAVAILABLE') return reach
   const reachKm = reach.value
+  // No stop can be farther than this: the walk to it and straight back is the whole reach.
+  const outKm = reachKm / 2
   let candidates: WalkStop[]
   try {
     // Every floor polygon in reach, so the length check below chooses, not the count.
-    candidates = candidateStops(FLAT_BEDROCK_GOAL, start, units, { maxWalkKm: reachKm, maxStops: Number.MAX_SAFE_INTEGER })
+    candidates = candidateStops(FLAT_BEDROCK_GOAL, start, units, { maxWalkKm: outKm, maxStops: Number.MAX_SAFE_INTEGER })
   } catch (e) {
     return unavailable(e instanceof Error ? e.message : String(e))
   }
@@ -141,7 +149,8 @@ export function flatBedrockStops(
   for (const stop of candidates.slice(1)) {
     if (stops.length > FLAT_BEDROCK_MAX_STOPS) break
     const legKm = surfaceDistanceKm(stops[stops.length - 1].coordinate, stop.coordinate)
-    if (walkedKm + legKm > reachKm) continue
+    // The way back from this stop counts: the walk ends at the landing site, inside the same reach.
+    if (walkedKm + legKm + surfaceDistanceKm(stop.coordinate, start) > reachKm) continue
     walkedKm += legKm
     stops.push(stop)
   }
@@ -154,25 +163,27 @@ export function flatBedrockStops(
     const reasoned = stops.map((s, i) =>
       i === 0 || s.unit.classification === 'UNAVAILABLE'
         ? s
-        : { ...s, reason: stopReason(FLAT_BEDROCK_GOAL, s.unit.value, reachKm, { placement: nearest, reachBasis: FLAT_BEDROCK_REACH_BASIS }) },
+        : { ...s, reason: stopReason(FLAT_BEDROCK_GOAL, s.unit.value, outKm, { placement: nearest, reachBasis: FLAT_BEDROCK_REACH_BASIS }) },
     )
     return derived(
-      { goal: FLAT_BEDROCK_GOAL, stops: reasoned, reachKm, samples, placements },
-      `Stops on the crater-floor units of the site's geologic map (${FLAT_BEDROCK_GOAL.unitNames.join(', ')}), nearest first, kept while the walk stop to stop is within ${reachKm.toFixed(2)} km: ${reachMethod}`,
+      { goal: FLAT_BEDROCK_GOAL, stops: reasoned, reachKm, outKm, samples, placements },
+      `Stops on the crater-floor units of the site's geologic map (${FLAT_BEDROCK_GOAL.unitNames.join(', ')}), nearest first, kept while the walk stop to stop and the way back to the landing site are within ${reachKm.toFixed(2)} km together: ${reachMethod}`,
     )
   }
   // No other floor polygon in reach: a landing site on a large floor polygon walks across that one.
-  const across = acrossFloorStops(start, units, reachKm)
-  if (across === null) return unavailable(FLAT_BEDROCK_REASONS.noFloor(reachKm))
+  // Out along one line and back along it: half the reach each way.
+  const across = acrossFloorStops(start, units, outKm)
+  if (across === null) return unavailable(FLAT_BEDROCK_REASONS.noFloor(outKm))
   return derived(
     {
       goal: FLAT_BEDROCK_GOAL,
       stops: [stops[0], ...across.stops],
       reachKm,
+      outKm,
       samples,
       placements: Object.fromEntries(across.stops.map((s) => [s.id, across.placement])),
     },
-    `Stops across the crater-floor polygon the landing site stands on (${across.unit}), out along the direction where it reaches farthest within ${reachKm.toFixed(2)} km: ${reachMethod}`,
+    `Stops across the crater-floor polygon the landing site stands on (${across.unit}), out along the direction where it reaches farthest within ${outKm.toFixed(2)} km, half of the ${reachKm.toFixed(2)} km the walk has for going out and coming back: ${reachMethod}`,
   )
 }
 

@@ -16,6 +16,7 @@ import {
 } from '../../src/domain'
 import { FLAT_BEDROCK_REASONS } from '../../src/features/route-analysis/flatBedrockWalk'
 import { ROVER_CHECK_GOAL } from '../../src/features/route-analysis/roverCheckWalk'
+import { RETURN_STOP_LABEL } from '../../src/features/route-analysis/scienceGoals'
 import { TRANSECT_GOAL } from '../../src/features/route-analysis/transectLine'
 import { MAP, START, UNITS, at, xOf } from '../fixtures/transect'
 
@@ -160,7 +161,12 @@ describe('walkDrafts: the rover check', () => {
     if (check?.status !== 'planned') throw new Error(`expected a rover check: ${JSON.stringify(check)}`)
     expect(check.plan.goal).toBe(ROVER_CHECK_GOAL)
     expect(walkPlanProblem(check.plan)).toBeNull()
-    expect(check.plan.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · sol 100', 'Stop 2 · sol 101', 'Stop 3 · sol 102'])
+    expect(check.plan.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · sol 100', 'Stop 2 · sol 101', 'Stop 3 · sol 102', RETURN_STOP_LABEL])
+    // The walk ends where it began, and its last leg is the way back.
+    expect(check.plan.stops[4].coordinate).toEqual(check.plan.stops[0].coordinate)
+    expect(check.plan.legs).toHaveLength(4)
+    expect(check.plan.legs[3]).toMatchObject({ fromStopId: check.plan.stops[3].id, toStopId: check.plan.stops[4].id })
+    expect(check.fit.fits).toBe(true)
     expect(check.plan.samples!.map((s) => s.coordinate)).toEqual(ROVER.points.map((p) => p.coordinate))
     expect(check.plan.stops[1].reason).toMatchObject({ classification: 'OFFICIAL', value: 'Perseverance was here on sol 100 (site 7, drive 0)' })
   })
@@ -177,7 +183,7 @@ describe('walkDrafts: the rover check', () => {
     }
     const check = (await plan(setup({ profile: (path, s) => sampleProfile(path, gappy, s) }))).find((o) => o.kind === 'rover-check')
     if (check?.status !== 'planned') throw new Error(`expected a rover check: ${JSON.stringify(check)}`)
-    expect(check.plan.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · sol 100'])
+    expect(check.plan.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · sol 100', RETURN_STOP_LABEL])
     expect(check.samplesNote).toMatch(/^2 more waypoints were left off: the walk to the next could not be checked \(.*not known\): /)
   })
 
@@ -219,12 +225,13 @@ describe('walkDrafts: with the place names, and with fewer samples than waypoint
   })
 
   it('says how many waypoints were left off when the time runs out', async () => {
-    const out = await planWalks(setup(), START, { ...DEFAULT_MISSION_SETTINGS, durationMin: 40 }, signal())
+    // 100 min: out to the first waypoint 1 km away and back fits; out to the second, 2 km away, and back does not.
+    const out = await planWalks(setup(), START, { ...DEFAULT_MISSION_SETTINGS, durationMin: 100 }, signal())
     if (out === 'aborted') throw new Error('aborted')
     const check = out.find((o) => o.kind === 'rover-check')
     if (check?.status !== 'planned') throw new Error(`expected a rover check: ${JSON.stringify(check)}`)
     expect(check.plan.samples!.length).toBeLessThan(3)
-    expect(check.samplesNote).toMatch(/^\d more waypoints? (was|were) left off: the next would break the duration limit\.$/)
+    expect(check.samplesNote).toMatch(/^\d more waypoints? (was|were) left off: the walk to the next and back would break the duration limit\.$/)
   })
 })
 
