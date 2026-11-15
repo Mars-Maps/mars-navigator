@@ -2,8 +2,13 @@
 
 ## Data flow
 
-Data moves in one direction. External formats are known only to the adapter
-layer, so nothing above it depends on where a value came from.
+Mars Navigator follows a layered architecture designed to separate external scientific data, internal domain models, analytical calculations and visual presentation.
+
+Information moves through the application in a defined direction. External datasets are first processed by adapters that interpret their formats, validate their contents, classify their provenance and convert units or coordinate conventions where required.
+
+Once the data has been normalized, the remaining application layers can use it without depending on the original source format. This separation allows the analytical and visualization components to operate through consistent internal interfaces.
+
+The following diagram illustrates how information moves between the main architectural layers:
 
 ```
 EXTERNAL DATA        tile services, GeoTIFFs, feature services, JSON feeds,
@@ -21,13 +26,17 @@ src/features/route-analysis/     calculations: routes, slopes, hazards, models
 src/features/mars-3d/            the globe and the surface view
 src/features/mission-ui/         panels, tools and the HUD
 ```
+### Application composition
 
-`src/app/` is the composition root. It is the only place that imports both
-`src/data/` and `src/features/`: it calls the adapters, runs route-analysis
-on what they return, and hands the results to the features as props or
-through the shared stores. A feature that needs data declares a prop or an
-interface (for example `surfaceElevation.ts` in `mars-3d`), and the shell
-supplies the implementation.
+The `src/app/` directory serves as the application's composition root. It connects external data adapters with the analytical and visual features that consume their results.
+
+This layer is responsible for invoking adapters, passing normalised information into route-analysis functions and supplying the resulting data to interface components through props or shared state.
+
+Individual features do not directly retrieve or interpret external scientific formats. Instead, they declare the information they require through component properties or interfaces.
+
+For example, the surface elevation interface in `mars-3d` defines the data needed for surface visualization, while the application shell supplies the corresponding implementation.
+
+This arrangement keeps data acquisition, scientific calculations and visual presentation separate, making the project easier to maintain and extend.
 
 ## Import rules
 
