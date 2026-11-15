@@ -54,8 +54,10 @@ describe('flatBedrockReachKm', () => {
     const byTime = ((40 - 2 * SAMPLE_MINUTES) / 60) * suitedWalkingKmh(0)
     const reach = flatBedrockReachKm(s)
     if (reach.classification !== 'DERIVED') throw new Error('expected DERIVED')
-    expect(reach.value).toBeCloseTo(Math.min(byTime, DEFAULT_MAX_WALK_KM), 9)
+    expect(reach.value).toBeCloseTo(Math.min(byTime, 2 * DEFAULT_MAX_WALK_KM), 9)
     expect(reach.method).toMatch(/level-ground pace/)
+    // The reach is the whole walk: out and back.
+    expect(reach.method).toMatch(/the way back to the landing site included/)
     expect(reach.method).toMatch(/not a Mars measurement/)
 
     const tired = flatBedrockReachKm(settings({ durationMin: 10_000, energyKcal: 50 }))
@@ -63,7 +65,8 @@ describe('flatBedrockReachKm', () => {
     expect(tired.value).toBeCloseTo(50 / walkingKcalPerKm(0), 9)
 
     const roomy = flatBedrockReachKm(settings({ durationMin: 10_000, energyKcal: 100_000 }))
-    expect(roomy.classification === 'DERIVED' && roomy.value).toBe(DEFAULT_MAX_WALK_KM)
+    // Out and straight back: no stop farther than the map is read.
+    expect(roomy.classification === 'DERIVED' && roomy.value).toBe(2 * DEFAULT_MAX_WALK_KM)
   })
 
   it('takes fewer samples rather than no walk, and says so', () => {
@@ -108,17 +111,41 @@ describe('flatBedrockStops', () => {
     }
   })
 
-  it('keeps the walk, stop to stop, within the reach the settings allow', () => {
-    // About 1 km of walking: room for the floor stop 1 km east, not for the etched one 2 km north beyond it.
-    const minutes = 1 * SAMPLE_MINUTES + (1.6 / suitedWalkingKmh(0)) * 60
+  /** The walk through `stops` and straight back to the first of them, km. */
+  const outAndBackKm = (stops: readonly { coordinate: MarsCoordinate }[]) => {
+    let km = surfaceDistanceKm(stops[stops.length - 1].coordinate, stops[0].coordinate)
+    for (let i = 1; i < stops.length; i++) km += surfaceDistanceKm(stops[i - 1].coordinate, stops[i].coordinate)
+    return km
+  }
+
+  it('keeps the walk, stop to stop and back to the landing site, within the reach the settings allow', () => {
+    // About 2.4 km of walking: room to go to the floor stop 1 km east and come back, not to go on to the etched one 2 km north.
+    const minutes = 1 * SAMPLE_MINUTES + (2.4 / suitedWalkingKmh(0)) * 60
     const draft = flatBedrockStops(START, units, settings({ samples: 1, durationMin: minutes, energyKcal: 10_000 }))
     if (draft.classification !== 'DERIVED') throw new Error('expected DERIVED')
-    const { stops, reachKm } = draft.value
-    let walked = 0
-    for (let i = 1; i < stops.length; i++) walked += surfaceDistanceKm(stops[i - 1].coordinate, stops[i].coordinate)
-    expect(walked).toBeLessThanOrEqual(reachKm)
+    const { stops, reachKm, outKm } = draft.value
+    expect(outAndBackKm(stops)).toBeLessThanOrEqual(reachKm)
+    expect(outKm).toBeCloseTo(reachKm / 2, 9)
     expect(stops.length).toBe(2)
     expect(stops[1].unit.classification !== 'UNAVAILABLE' && stops[1].unit.value.name).toBe(FLOOR)
+  })
+
+  it('leaves off a stop the walk could reach but not come back from', () => {
+    // 1.6 km of walking reaches the floor stop 1 km east, but not there and back: before the way back counted, it was kept.
+    const minutes = 1 * SAMPLE_MINUTES + (1.6 / suitedWalkingKmh(0)) * 60
+    const draft = flatBedrockStops(START, units, settings({ samples: 1, durationMin: minutes, energyKcal: 10_000 }))
+    expect(draft.classification).toBe('UNAVAILABLE')
+    if (draft.classification === 'UNAVAILABLE') expect(draft.reason).toMatch(/and still come back/)
+  })
+
+  it('counts the way back from the last stop when it takes a further one', () => {
+    // The floor stop and then the etched one: 1.05 km, 2.3 km on, 2.05 km back, about 5.4 km. With 5 km the second is left off.
+    const fits = flatBedrockStops(START, units, settings({ samples: 1, durationMin: SAMPLE_MINUTES + (5.6 / suitedWalkingKmh(0)) * 60, energyKcal: 10_000 }))
+    const short = flatBedrockStops(START, units, settings({ samples: 1, durationMin: SAMPLE_MINUTES + (5 / suitedWalkingKmh(0)) * 60, energyKcal: 10_000 }))
+    if (fits.classification !== 'DERIVED' || short.classification !== 'DERIVED') throw new Error('expected DERIVED')
+    expect(fits.value.stops).toHaveLength(3)
+    expect(outAndBackKm(fits.value.stops)).toBeLessThanOrEqual(fits.value.reachKm)
+    expect(short.value.stops).toHaveLength(2)
   })
 
   it(`takes at most ${FLAT_BEDROCK_MAX_STOPS} stops after the landing site`, () => {
@@ -154,7 +181,8 @@ describe('a landing site on a large floor polygon', () => {
     expect(samples).toBe(DEFAULT_MISSION_SETTINGS.samples)
     for (const stop of stops.slice(1)) {
       expect(stop.unit.classification !== 'UNAVAILABLE' && stop.unit.value.name).toBe(FLOOR)
-      expect(surfaceDistanceKm(START, stop.coordinate)).toBeLessThanOrEqual(reachKm + 1e-9)
+      // Out along the line and back along it: no stop past half the reach.
+      expect(surfaceDistanceKm(START, stop.coordinate)).toBeLessThanOrEqual(reachKm / 2 + 1e-9)
       expect(placements[stop.id]).toMatch(/across the floor polygon it stands on/)
       expect(stop.reason.classification === 'DERIVED' && stop.reason.method).toContain(FLAT_BEDROCK_REACH_BASIS)
     }
