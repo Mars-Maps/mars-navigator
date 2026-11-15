@@ -1,9 +1,12 @@
-import { useRef, type ReactNode } from 'react'
+import { Suspense, lazy, useRef, type ReactNode } from 'react'
 import { useMissionStore, useSite, type SidePanelId } from '../../state'
 import { COMPASS_DIAL_ID } from './CompassDial'
-import { LayerMenu } from './LayerMenu'
 import { useEscapeLayer } from '../../lib/useEscapeLayer'
 import { useLayerMenuDrag } from './useLayerMenuDrag'
+
+// The layer menu opens on a press of its button, so its code (the menu, its
+// legends and the thermal settings) is not in the first load.
+const LayerMenu = lazy(() => import('./LayerMenu').then((m) => ({ default: m.LayerMenu })))
 
 /**
  * Right-side vertical controls: site, grid, zoom, layers, compass. Every button
@@ -105,7 +108,9 @@ function MovableLayerMenu({ id }: { id: string }) {
       style={{ translate: `${offset.dx}px ${offset.dy}px` }}
       className="absolute right-full top-(--icons-menu-top) mr-2 max-h-(--icons-menu-max) w-80 overflow-y-auto"
     >
-      <LayerMenu move={move} />
+      <Suspense fallback={null}>
+        <LayerMenu move={move} />
+      </Suspense>
     </div>
   )
 }

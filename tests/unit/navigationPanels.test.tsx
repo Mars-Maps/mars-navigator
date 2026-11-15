@@ -1,12 +1,13 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { derived, type MarsCoordinate, type RouteOption, type RouteRequest } from '../../src/domain'
+import { SHIELDING_WARNING_TEXT, derived, type MarsCoordinate, type RouteOption, type RouteRequest } from '../../src/domain'
 import { planRouteOptions } from '../../src/app/planRoute'
 import { minimizesForNavigation } from '../../src/features/mars-3d/captionAlerts'
 import { HazardsPanel } from '../../src/features/mission-ui/navigation/HazardsPanel'
 import { ProgressTracker } from '../../src/features/mission-ui/navigation/ProgressTracker'
 import { planFastest } from '../../src/features/route-analysis/strategies/fastest'
 import { pendingOption } from '../../src/features/route-analysis/strategies/searchedRoute'
+import { methodologyText, visibleText } from './methodology.helpers'
 import { at, fixtureTerrain } from './terrain.helpers'
 
 // Test fixtures only: invented coordinates and hazards.
@@ -18,6 +19,8 @@ const route = planRouteOptions(REQUEST).find((o) => o.strategy === 'shortest')!
 const withHazards = (hazards: RouteOption['hazards']): RouteOption => ({ ...route, hazards })
 // What follows the h2 on its line, up to the end of the heading row.
 const heading = (html: string) => html.match(/<h2[^>]*>Hazards<\/h2>(.*?)<\/div>/)![1]
+const visible = visibleText
+const hidden = methodologyText
 
 describe('HazardsPanel in the navigation column', () => {
   it('puts a one-line state on the heading line', () => {
@@ -31,43 +34,55 @@ describe('HazardsPanel in the navigation column', () => {
     )
     const none = withHazards(derived([], 'fixture scan'))
     expect(heading(renderToStaticMarkup(<HazardsPanel route={none} />))).toContain(
-      'Scanned for radiation: none found',
-    )
-    expect(renderToStaticMarkup(<HazardsPanel route={none} />)).toContain(
-      'not scanned for steep slope, sudden drop, dust, temperature and mapped obstacle',
+      'Steep slope and radiation: none found',
     )
   })
 
-  it('separates only a state that shares the heading line', () => {
+  it('separates every one-line state from the heading', () => {
     const SEPARATOR = /<span aria-hidden="true"[^>]*>·<\/span>/
     expect(heading(renderToStaticMarkup(<HazardsPanel route={null} />))).toMatch(SEPARATOR)
     expect(heading(renderToStaticMarkup(<HazardsPanel route={route} />))).toMatch(SEPARATOR)
-    // Scanned and none found is a sentence on its own line: no dangling "·"
-    // after the heading, and the line is full width so it never shares it.
+    expect(heading(renderToStaticMarkup(<HazardsPanel route={withHazards(derived([], 'fixture scan'))} />))).toMatch(SEPARATOR)
+  })
+
+  it('keeps the long words out of the panel, behind one Methodology button', () => {
+    expect(renderToStaticMarkup(<HazardsPanel route={null} />)).not.toContain('data-methodology')
     const none = renderToStaticMarkup(<HazardsPanel route={withHazards(derived([], 'fixture scan'))} />)
-    expect(heading(none)).not.toMatch(SEPARATOR)
-    expect(none).toMatch(/<p class="basis-full[^"]*">Scanned for radiation: none found/)
+    expect(none.match(/<button[^>]*data-methodology=""/g)).toHaveLength(1)
+    // What is shown without a click: the heading, the one-line state and the button's word.
+    expect(visible(none)).toBe('Hazards·Steep slope and radiation: none foundMethodology')
+    // Closed, the explanation is in the markup but hidden.
+    expect(hidden(none)).toContain('How the hazards were scanned')
+    expect(hidden(none)).toContain('Not scanned for')
+    expect(hidden(none)).toContain('Sudden drop, dust, temperature and mapped obstacle')
+    expect(hidden(none)).toContain('EVA-EXP-0075')
+    expect(hidden(none)).toContain(SHIELDING_WARNING_TEXT)
+  })
+
+  it('says why in the methodology when the route is not yet scanned', () => {
+    const html = renderToStaticMarkup(<HazardsPanel route={route} />)
+    if (route.hazards.classification !== 'UNAVAILABLE') throw new Error('expected an unscanned route')
+    expect(hidden(html)).toContain(route.hazards.reason)
+    expect(hidden(html)).not.toContain('how it is measured')
   })
 
   it('lists found hazards below the heading, with no one-line state', () => {
-    const found = withHazards(
-      derived(
-        [
-          {
-            id: 'h1',
-            kind: 'slope',
-            coordinate: A,
-            magnitude: derived(12, 'fixture slope'),
-            unit: 'deg',
-          },
-        ],
-        'fixture scan',
-      ),
-    )
-    const html = renderToStaticMarkup(<HazardsPanel route={found} />)
+    const slope = (id: string, deg: number) => ({
+      id,
+      kind: 'slope' as const,
+      coordinate: A,
+      magnitude: derived(deg, 'fixture slope'),
+      unit: '°',
+    })
+    const html = renderToStaticMarkup(<HazardsPanel route={withHazards(derived([slope('h1', 17.25), slope('h2', 23)], 'fixture scan'))} />)
     expect(html).toContain('<ul')
-    expect(html).toContain('Steep slope')
-    expect(html).not.toContain('none found')
+    expect(html.match(/Steep slope<\/span>/g)).toHaveLength(2)
+    expect(visible(html)).toContain('17.3°')
+    // Only the stretch over the cited limit says so.
+    expect(html.match(/data-over-limit=""/g)).toHaveLength(1)
+    expect(visible(html)).toContain('over 20°')
+    expect(heading(html)).toContain('· 2')
+    expect(visible(html)).not.toContain('none found')
     expect(html).not.toContain('Not yet scanned')
   })
 })
@@ -79,45 +94,32 @@ describe('HazardsPanel: what the route search kept off the path', () => {
     ...option,
     hazards,
   })
-  const KEPT_BOTH = 'steep slope and mapped obstacle kept off by the route search, not scanned'
-  // The words only: "not scanned" and its mark sit in a no-wrap span.
-  const words = (html: string) => html.replace(/<[^>]+>/g, '')
 
-  it('moves slope and mapped obstacle out of the plain list on a searched route, still "not scanned"', async () => {
+  it('says in the methodology what a searched route kept off its path, as what the search did, not a scan', async () => {
     const searched = scanned(await planFastest(request, fixtureTerrain(() => 0), signal))
-    const line = words(heading(renderToStaticMarkup(<HazardsPanel route={searched} />)))
-    expect(line).toContain('Scanned for radiation: none found')
-    expect(line).toContain(`not scanned for sudden drop, dust and temperature · ${KEPT_BOTH}`)
-    expect(line).not.toContain('not scanned for steep slope')
-    // The badge gives the search's own words, the ones its path method is built from.
-    expect(line).toContain('DERIVED')
-    expect(line).toContain('Steps over 20° (')
-    expect(line).toContain('small craters and ridged ground are not avoided.')
+    const html = renderToStaticMarkup(<HazardsPanel route={searched} />)
+    expect(visible(html)).not.toContain('kept off')
+    const more = hidden(html)
+    expect(more).toContain('Kept off by the route search')
+    // The search's own words, the ones its path method is built from.
+    expect(more).toContain('Steps over 20° (')
+    expect(more).toContain('small craters and ridged ground are not avoided.')
+    expect(more).toContain('not a scan of the path')
   })
 
-  it('keeps mapped obstacle in the plain list where the map was not read', async () => {
+  it('does not say mapped lines were kept off where the map was not read', async () => {
     const option = await planFastest(request, fixtureTerrain(() => 0, { mapFails: 'fixture map down' }), signal)
-    const line = words(heading(renderToStaticMarkup(<HazardsPanel route={scanned(option)} />)))
-    expect(line).toContain(
-      'not scanned for sudden drop, dust, temperature and mapped obstacle · steep slope kept off by the route search, not scanned',
-    )
-    expect(line).not.toContain('Steps crossing a line')
+    const more = hidden(renderToStaticMarkup(<HazardsPanel route={scanned(option)} />))
+    expect(more).toContain('Steps over 20° (')
+    expect(more).not.toContain('Steps crossing a line')
   })
 
   it('says nothing was kept off for a route that was not searched', () => {
     for (const option of [route, pendingOption('fastest', REQUEST)]) {
       const html = renderToStaticMarkup(<HazardsPanel route={scanned(option)} />)
-      expect(html).toContain('not scanned for steep slope, sudden drop, dust, temperature and mapped obstacle')
-      expect(html).not.toContain('kept off')
+      expect(hidden(html)).toContain('Sudden drop, dust, temperature and mapped obstacle')
+      expect(html).not.toContain('Kept off')
     }
-  })
-
-  it('follows a list of hazards with the same coverage, as a sentence', async () => {
-    const option = await planFastest(request, fixtureTerrain(() => 0), signal)
-    const hazard = { id: 'h1', kind: 'slope' as const, coordinate: A, magnitude: derived(12, 'fixture slope'), unit: 'deg' }
-    const html = renderToStaticMarkup(<HazardsPanel route={scanned(option, derived([hazard], 'fixture scan'))} />)
-    const after = words(html.slice(html.indexOf('</ul>')))
-    expect(after).toContain(`Not scanned for sudden drop, dust and temperature · ${KEPT_BOTH}`)
   })
 })
 

@@ -31,8 +31,10 @@ import {
 import {
   RadiationField,
   RadiationHazardNote,
+  SHIELDING_WARNING_SHORT,
   RadiationHudGlyph,
 } from '../../src/features/mission-ui/radiation/RadiationWarning'
+import { methodologyText, shownMarkup, visibleText } from './methodology.helpers'
 
 // Test fixtures only — invented shielding values, hazards and coordinates.
 const AT: MarsCoordinate = { latitude: 18.5, longitudeEast: 77.4 }
@@ -215,26 +217,32 @@ describe('the warning in each place', () => {
     expect(hud(unavailable('fixture-not-scanned'))).toBe('')
   })
 
-  it('point menu: the Gale reference sits under the dose, above the atmosphere overhead and the warning', () => {
+  it('point menu: the dose, the atmosphere overhead and the warning on show; the Gale reference in the methodology', () => {
     const html = renderToStaticMarkup(
       <PointMenuView point={AT} departure={null} radiationReference={GALE_RAD_REFERENCE} radiationShielding={f(0.6)} />,
     )
     const list = html.split('role="group"')[0]
-    const order = ['>Dose<', 'data-radiation-reference', '>Atmosphere overhead<', 'data-radiation-warning'].map((s) =>
+    const order = ['>Dose<', '>Atmosphere overhead<', 'data-radiation-warning', 'data-methodology=""', 'data-radiation-reference'].map((s) =>
       list.indexOf(s),
     )
     expect(order.every((at) => at >= 0)).toBe(true)
     expect([...order].sort((a, b) => a - b)).toEqual(order)
+    expect(shownMarkup(list)).not.toContain('data-radiation-reference')
+    // The warning is a few words; the rule's whole sentence and its basis are one click away.
+    expect(visibleText(list)).toContain(SHIELDING_WARNING_SHORT)
+    expect(visibleText(list)).not.toContain('project choice')
+    expect(methodologyText(list)).toContain(SHIELDING_WARNING_TEXT)
+    expect(methodologyText(list)).toContain(SHIELDING_WARNING_BASIS)
+    expect(methodologyText(list)).toContain(RADIATION_LEVEL_BASIS)
   })
 
   it('gives mSv only inside the Gale measurement, never for the point', () => {
     const html = renderToStaticMarkup(
       <PointMenuView point={AT} departure={null} radiationReference={GALE_RAD_REFERENCE} radiationShielding={f(0.6)} />,
     )
-    // Everything but the reference paragraphs (OFFICIAL, cited).
-    const outside = html.replace(/<p data-radiation-reference[^>]*>[\s\S]*?<\/p>/g, '')
-    expect(html).toMatch(/mSv/)
-    expect(outside).not.toMatch(/mSv|mGy/)
+    // The measurement (OFFICIAL, cited) is in the methodology; nothing on show has a dose unit.
+    expect(methodologyText(html)).toMatch(/Measured at Gale crater.*mSv/)
+    expect(visibleText(html)).not.toMatch(/mSv|mGy/)
     expect(html).not.toMatch(/higher dose/i)
   })
 

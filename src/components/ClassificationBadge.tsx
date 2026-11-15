@@ -42,6 +42,30 @@ export function ClassificationBadge({
   detail?: string
   passive?: boolean
 }) {
+  return <Mark colour={COLOUR[classification]} heading={classification} detail={detail} passive={passive} />
+}
+
+/**
+ * The same "i" for words that are help, not provenance: how to fill a
+ * field, what a control does. Neutral in colour and with no class name, so
+ * it never reads as a claim about where a value came from.
+ */
+export function InfoMark({ detail }: { detail: string }) {
+  return <Mark colour="text-ink-muted" detail={detail} />
+}
+
+function Mark({
+  colour,
+  heading,
+  detail,
+  passive = false,
+}: {
+  colour: string
+  /** The class name, for a provenance mark. */
+  heading?: string
+  detail?: string
+  passive?: boolean
+}) {
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
   const show = (e: PointerEvent<HTMLElement> | FocusEvent<HTMLElement>) =>
     setAnchor(e.currentTarget.getBoundingClientRect())
@@ -61,16 +85,14 @@ export function ClassificationBadge({
   return (
     <span
       {...handlers}
-      className={`inline-flex shrink-0 cursor-help rounded-control opacity-60 transition-opacity duration-(--duration-fast) hover:opacity-100 focus-visible:opacity-100 ${COLOUR[classification]}`}
+      className={`inline-flex shrink-0 cursor-help rounded-control opacity-60 transition-opacity duration-(--duration-fast) hover:opacity-100 focus-visible:opacity-100 ${colour}`}
     >
       <InfoIcon />
-      <span className="sr-only">{classification}</span>
+      {heading && <span className="sr-only">{heading}</span>}
       {detail && <span className="sr-only">{detail}</span>}
       {anchor && (
         <Tooltip anchor={anchor} onDismiss={hide}>
-          <span className={`text-micro font-medium uppercase ${COLOUR[classification]}`}>
-            {classification}
-          </span>
+          {heading && <span className={`text-micro font-medium uppercase ${colour}`}>{heading}</span>}
           {detail && <span className="wrap-anywhere text-caption text-ink-muted">{detail}</span>}
         </Tooltip>
       )}

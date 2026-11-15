@@ -8,6 +8,7 @@ import { LandingStep, type LandingReading } from '../../src/features/mission-ui/
 import { DEFAULT_MISSION_SETTINGS, type MissionSettings } from '../../src/features/mission-ui/walk/missionSettings'
 import { firstStep, shownStep, stepOpen, type WalkStep } from '../../src/features/mission-ui/walk/walkSteps'
 import type { Classified, MarsCoordinate } from '../../src/domain'
+import { methodologyText, visibleText } from './methodology.helpers'
 
 const LANDING: MarsCoordinate = { latitude: 18.44, longitudeEast: 77.45 }
 
@@ -124,13 +125,20 @@ describe('GoalPickerView', () => {
     expect(html.match(/<li class="flex flex-col/g)).toHaveLength(SAMPLE_WALK_PLAN.stops.length)
   })
 
-  it('shows where the plan starts, and the limit it was checked against with its label and citation', () => {
+  it('shows where the plan starts and its slope limit; how the walk is checked is behind the Methodology button', () => {
     const html = render({ plan: SAMPLE_WALK_PLAN })
     const { latitude } = SAMPLE_WALK_PLAN.stops[0].coordinate
     expect(html).toContain(`${latitude.toFixed(3)}°N`)
-    expect(html).toContain('Slope limit 20°: lunar xEVA figure, not a Mars requirement')
+    expect(visibleText(html)).toContain('Slope limit 20°')
     expect(html).toContain('EVA-EXP-0075')
-    expect(html).toContain('a flag means look here, not impassable')
+    // The label, how slopes are measured and what a leg is: one click away, not three paragraphs.
+    expect(visibleText(html)).not.toContain('a flag means look here')
+    expect(visibleText(html)).not.toContain('Each leg is a straight line')
+    const more = methodologyText(html)
+    expect(more).toContain('How the walk is checked')
+    expect(more).toContain('20°: lunar xEVA figure, not a Mars requirement')
+    expect(more).toContain('a flag means look here, not impassable')
+    expect(more).toContain('it does not go around them')
   })
 
   it('puts each leg under the stop it reaches, and none under the start', () => {
@@ -299,11 +307,12 @@ describe('Plan a walk, mission settings step', () => {
 
   it('cites the slope limit only when it is the suited figure; a limit set in the settings has no OFFICIAL mark', () => {
     const cited = render({ plan: SAMPLE_WALK_PLAN })
-    expect(cited).toMatch(/Slope limit 20°.*?<span class="sr-only">OFFICIAL<\/span>/s)
+    expect(cited).toMatch(/Slope limit .*?20°.*?<span class="sr-only">OFFICIAL<\/span>/s)
     const own = { ...SAMPLE_WALK_PLAN, slopeLimit: { deg: 15, label: 'set in the mission settings, not a cited figure', source: 'settings' } }
     const html = render({ plan: own })
-    const line = html.slice(html.indexOf('Slope limit 15°'), html.indexOf('Slopes are measured'))
-    expect(line).toContain('set in the mission settings')
+    const line = html.slice(html.indexOf('Slope limit '), html.indexOf('Stand at the start'))
+    expect(visibleText(line)).toContain('Slope limit 15°')
+    expect(methodologyText(line)).toContain('set in the mission settings')
     expect(line).not.toContain('OFFICIAL')
   })
 

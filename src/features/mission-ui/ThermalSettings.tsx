@@ -1,4 +1,4 @@
-import { ClassificationBadge } from '../../components/ClassificationBadge'
+import { ClassificationBadge, InfoMark } from '../../components/ClassificationBadge'
 import type { Classified } from '../../domain'
 import {
   useMissionStore,
@@ -108,11 +108,11 @@ export function ThermalSettingsView({
       <p className="mt-2 flex flex-wrap items-center gap-x-1.5 text-caption text-ink-subtle">
         Local time at view centre:
         <ClassifiedValue value={localTime} format={formatHours} />
+        <InfoMark detail="A hint only: the variant never switches by itself." />
       </p>
-      <p className="text-caption text-ink-subtle">A hint only: the variant never switches by itself.</p>
 
-      <p className="mt-2 flex items-start gap-1.5 text-caption text-ink-subtle">
-        <span>No official seasonal surface-temperature map was found.</span>
+      <p className="mt-1 flex items-center gap-1.5 text-caption text-ink-subtle">
+        <span>No seasonal map</span>
         <ClassificationBadge classification="UNAVAILABLE" detail={NO_SEASONAL_MAP_REASON} />
       </p>
     </section>

@@ -1,5 +1,5 @@
 import { BASE_MAP_LAYER_ID, type Classified, type MapLayer, type MissionSite } from '../../domain'
-import { ClassificationBadge } from '../../components/ClassificationBadge'
+import { ClassificationBadge, InfoMark } from '../../components/ClassificationBadge'
 import { Panel } from '../../components/Panel'
 import { useMissionStore, useSite } from '../../state'
 import { ClassifiedValue } from './ClassifiedValue'
@@ -79,8 +79,10 @@ export function IntroPanelView({
         <div>
           <h1 className="text-display font-normal text-ink">Mars</h1>
           {site && (
-            <p className="mt-1 text-body text-ink" title={site.source}>
-              {site.name} · the Mars 2020 landing site. {site.mission}
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-body text-ink">
+              <span title={site.source}>{site.name} · the Mars 2020 landing site</span>
+              {/* A hover mark, not a button: a click anywhere here leaves the welcome screen. */}
+              <InfoMark detail={`${site.mission} ${site.source}`} />
             </p>
           )}
           <p className="mt-1 text-body text-ink-muted">
@@ -120,8 +122,8 @@ export function IntroPanelView({
               <div key={id}>
                 <dt className="text-caption text-ink-subtle">{c.label}</dt>
                 <dd>
-                  <ClassifiedValue value={c.value} format={(v) => `${v} ${c.unit}`} />
-                  {c.note && <p className="mt-1 text-caption text-ink-subtle">{c.note}</p>}
+                  {/* The source's own caveat is in the mark with the source. */}
+                  <ClassifiedValue value={c.value} format={(v) => `${v} ${c.unit}`} note={c.note} />
                 </dd>
               </div>
             ))}
@@ -130,10 +132,12 @@ export function IntroPanelView({
         {picture?.previewUrl != null && (
           // Inline, so the mark follows the last word instead of wrapping alone.
           <p className="mt-3 text-caption text-ink-subtle">
-            Picture: one Mars Trek map tile, cropped round; not a photo of the globe.
-            {picture.caveat !== null && ` ${picture.caveat}.`}{' '}
+            Picture: one map tile, not a photo of the globe{' '}
             <span className="inline-block align-middle">
-              <ClassificationBadge classification={picture.classification} detail={picture.source} />
+              <ClassificationBadge
+                classification={picture.classification}
+                detail={`One Mars Trek map tile, cropped round.${picture.caveat !== null ? ` ${picture.caveat}.` : ''} ${picture.source}`}
+              />
             </span>
           </p>
         )}

@@ -18,11 +18,20 @@ import {
   UNSCANNED_HAZARD_KINDS,
   detectHazards,
   radiationDetector,
+  slopeDetector,
   type HazardDetector,
 } from '../../src/features/route-analysis/hazards'
+import {
+  NO_HEIGHTS_FOR_SLOPE,
+  ROUTE_SLOPE_METHOD,
+  SLOPE_HAZARD_UNIT,
+  STEEP_SLOPE_FROM_DEG,
+  slopeWarning,
+} from '../../src/features/route-analysis/slopeHazard'
 
 const ALL: HazardKind[] = ['slope', 'sudden-drop', 'dust', 'radiation', 'temperature', 'mapped-obstacle']
-const STUBS = ALL.filter((k) => k !== 'radiation')
+const READY: HazardKind[] = ['slope', 'radiation']
+const STUBS = ALL.filter((k) => !READY.includes(k))
 
 /** Builds route points from [latitude, longitudeEast] pairs, with no height. Test fixture only. */
 function points(...coords: [number, number][]): SurfacePoint[] {
@@ -77,10 +86,12 @@ describe('hazard detectors', () => {
     expect(HAZARD_DETECTORS[kind].ready).toBe(false)
   })
 
-  it('radiation is the one ready detector, and the lists say so', () => {
+  it('slope and radiation are the ready detectors, and the lists say so', () => {
     expect(HAZARD_DETECTORS.radiation).toBe(radiationDetector)
+    expect(HAZARD_DETECTORS.slope).toBe(slopeDetector)
     expect(radiationDetector.ready).toBe(true)
-    expect(SCANNED_HAZARD_KINDS).toEqual(['radiation'])
+    expect(slopeDetector.ready).toBe(true)
+    expect(SCANNED_HAZARD_KINDS).toEqual(READY)
     expect([...UNSCANNED_HAZARD_KINDS].sort()).toEqual([...STUBS].sort())
   })
 })
@@ -135,6 +146,81 @@ describe('the radiation detector', () => {
   })
 })
 
+describe('the slope detector', () => {
+  /** Points along one parallel, `stepKm` apart, at the given heights. Test fixture only. */
+  const KM_PER_DEG_LON = (Math.PI / 180) * 3389.5 * Math.cos((18.44 * Math.PI) / 180)
+  const profile = (stepKm: number, ...metres: number[]): SurfacePoint[] =>
+    metres.map((m, i) => ({
+      id: `s${i}`,
+      coordinate: { latitude: 18.44, longitudeEast: 77.45 + (i * stepKm) / KM_PER_DEG_LON },
+      elevationMeters: Number.isFinite(m) ? official(m, 'fixture DEM') : unavailable('fixture gap'),
+    }))
+  /** The rise over 100 m of ground that is `deg` steep. */
+  const rise = (deg: number) => 100 * Math.tan((deg * Math.PI) / 180)
+
+  it('is UNAVAILABLE, not an empty list, when no stretch has a height at both ends', () => {
+    expect(slopeDetector.detect(points([0, 10], [1, 11]))).toEqual(unavailable(NO_HEIGHTS_FOR_SLOPE))
+    expect(slopeDetector.detect(profile(0.1, 0, Number.NaN, 0))).toEqual(unavailable(NO_HEIGHTS_FOR_SLOPE))
+  })
+
+  it('finds nothing on gentle and moderate ground, DERIVED with the method', () => {
+    const result = slopeDetector.detect(profile(0.1, 0, rise(4), rise(4) + rise(14)))
+    expect(result).toMatchObject({ classification: 'DERIVED', value: [] })
+    if (result.classification !== 'DERIVED') return
+    expect(result.method).toBe(ROUTE_SLOPE_METHOD)
+    expect(result.method).toContain('EVA-EXP-0075')
+    expect(result.method).toContain("project's own band")
+  })
+
+  it('warns from 15°, the steep band, uphill and downhill alike', () => {
+    const up = slopeDetector.detect(profile(0.1, 0, rise(16)))
+    const down = slopeDetector.detect(profile(0.1, rise(16), 0))
+    for (const result of [up, down]) {
+      if (result.classification !== 'DERIVED') throw new Error('expected a scan')
+      expect(result.value).toHaveLength(1)
+      const [h] = result.value
+      expect(h).toMatchObject({ kind: 'slope', unit: SLOPE_HAZARD_UNIT, id: 'route-slope-1' })
+      if (!isAvailable(h.magnitude)) throw new Error('expected a figure')
+      expect(h.magnitude.value).toBeCloseTo(16, 1)
+      expect(slopeWarning(h.magnitude.value)).toBe('steep')
+    }
+  })
+
+  it('joins neighbouring steep stretches into one warning, with the steepest figure at its middle', () => {
+    const h = [0, rise(16), rise(16) + rise(24), rise(16) + rise(24) + rise(17)]
+    const result = slopeDetector.detect(profile(0.1, ...h, h[3], h[3] + rise(18)))
+    if (result.classification !== 'DERIVED') throw new Error('expected a scan')
+    expect(result.value).toHaveLength(2)
+    const [first, second] = result.value
+    if (!isAvailable(first.magnitude) || !isAvailable(second.magnitude)) throw new Error('expected figures')
+    expect(first.magnitude.value).toBeCloseTo(24, 1)
+    expect(slopeWarning(first.magnitude.value)).toBe('over-limit')
+    // The middle of the second stretch, 100–200 m along.
+    expect(first.coordinate.longitudeEast).toBeCloseTo(77.45 + 0.15 / KM_PER_DEG_LON, 9)
+    expect(first.magnitude.classification).toBe('DERIVED')
+    if (first.magnitude.classification === 'DERIVED') expect(first.magnitude.method).toMatch(/^The steepest stretch of 300 m of steep ground starting 0 m along the route/)
+    expect(second.magnitude.value).toBeCloseTo(18, 1)
+  })
+
+  it('does not check a stretch with no height at one end, and warns on neither side of it', () => {
+    const result = slopeDetector.detect(profile(0.1, 0, Number.NaN, 500, 500))
+    expect(result).toMatchObject({ classification: 'DERIVED', value: [] })
+  })
+})
+
+describe('the steep slope rule', () => {
+  it('has two lines, judged on the figure as shown', () => {
+    expect(STEEP_SLOPE_FROM_DEG).toBe(15)
+    expect(slopeWarning(14.94)).toBeNull()
+    expect(slopeWarning(14.96)).toBe('steep')
+    expect(slopeWarning(20)).toBe('steep')
+    expect(slopeWarning(20.04)).toBe('steep')
+    expect(slopeWarning(20.06)).toBe('over-limit')
+    expect(slopeWarning(Number.NaN)).toBeNull()
+    expect(slopeWarning(-3)).toBeNull()
+  })
+})
+
 describe('detectHazards', () => {
   it('a route with no heights: UNAVAILABLE naming every detector that did not run, never []', () => {
     const result = detectHazards(points([0, 10], [1, 11], [2, 12]))
@@ -143,15 +229,18 @@ describe('detectHazards', () => {
     expect(result.reason).toMatch(new RegExp(`^${HAZARD_REASONS.nothingScanned}: `))
     for (const kind of STUBS) expect(result.reason).toContain(`${kind} (${kind} detection not implemented)`)
     expect(result.reason).toContain(`radiation (${NO_HEIGHTS_FOR_SHIELDING})`)
+    expect(result.reason).toContain(`slope (${NO_HEIGHTS_FOR_SLOPE})`)
     expect(result).not.toHaveProperty('value')
   })
 
-  it('a route with heights: DERIVED from the radiation scan alone, and the method lists the kinds not scanned', () => {
+  it('a route with heights: DERIVED from the slope and radiation scans, and the method lists the kinds not scanned', () => {
     const result = detectHazards(heights(JEZERO.landingSite, JEZERO.highestCell))
     expect(result.classification).toBe('DERIVED')
     if (result.classification !== 'DERIVED') return
-    expect(result.value.map((h) => h.kind)).toEqual(['radiation'])
-    expect(result.method).toMatch(/^Scanned for radiation: /)
+    // The fixture climbs a kilometre in half a kilometre: steep, and thin air at the top.
+    expect(result.value.map((h) => h.kind)).toEqual(['slope', 'radiation'])
+    expect(result.method).toMatch(/^Scanned for slope: /)
+    expect(result.method).toContain('; radiation: ')
     expect(result.method).toContain('. Not scanned: ')
     for (const kind of STUBS) expect(result.method).toContain(`${kind} (${kind} detection not implemented)`)
   })
@@ -159,7 +248,7 @@ describe('detectHazards', () => {
   it('a route on the crater floor: DERIVED and empty, "scanned, none", with the same coverage note', () => {
     const result = detectHazards(heights(JEZERO.landingSite, JEZERO.deltaTop))
     expect(result).toMatchObject({ classification: 'DERIVED', value: [] })
-    if (result.classification === 'DERIVED') expect(result.method).toContain('Not scanned: slope')
+    if (result.classification === 'DERIVED') expect(result.method).toContain('Not scanned: sudden-drop')
   })
 
   it('is UNAVAILABLE for an empty route, with its own reason', () => {
