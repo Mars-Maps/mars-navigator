@@ -59,6 +59,11 @@ npm run build
 npx wrangler deploy
 ```
 
+The deploy serves the site at `marsmaps.space` and `www.marsmaps.space`, as
+custom domains: Cloudflare creates their DNS records and certificate. The
+`marsmaps.space` zone has to be active in the Cloudflare account, or the
+deploy fails. There is no `workers.dev` address; preview URLs stay on.
+
 Any static host works as long as unknown paths fall back to `index.html`.
 The app fetches its map tiles, elevation, geology, rover paths and photos
 from public NASA and USGS services at runtime, so the browser needs network

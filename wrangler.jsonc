@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "mars-explorer",
+  "name": "mars-navigator",
   "compatibility_date": "2026-10-14",
 
   // Static-assets-only Worker: no server code, just the Vite build output.
@@ -15,6 +15,17 @@
   // non-production branch and pull request. The block may be empty — assets,
   // compatibility settings and placement stay at the top level.
   "previews": {},
+
+  // The site's address. A custom domain makes Cloudflare create the DNS
+  // records and the certificate itself; the zone has to be in the account.
+  "routes": [
+    { "pattern": "marsmaps.space", "custom_domain": true },
+    { "pattern": "www.marsmaps.space", "custom_domain": true }
+  ],
+
+  // With routes set, wrangler turns the workers.dev address off and preview
+  // URLs with it. Previews are what the block above is for, so keep them on.
+  "preview_urls": true,
 
   "observability": {
     "enabled": true
