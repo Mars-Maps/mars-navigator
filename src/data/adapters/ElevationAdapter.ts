@@ -2,6 +2,7 @@ import { derived, official, unavailable, validateCoordinate, type Classified, ty
 import { bilinearCells, nearestCell } from '../elevation/demGrid'
 import { bytesPerSample, type DemSource } from '../elevation/demSources'
 import { layoutMismatch, readTiffLayout, TiffLayoutError, type ByteReader } from '../elevation/tiffLayout'
+import { mirrorsOf, PER_HOST_CONNECTIONS, readFromMirror } from './rangeMirrors'
 
 /**
  * Elevation adapter: heights from a USGS DEM read in
@@ -65,23 +66,20 @@ export const browserElevationIo: ElevationIo = {
     // serialises concurrent requests to one URL through its HTTP cache
     // lock, which turned the six parallel reads into one at a time (30
     // reads: 9.4 s; with a URL per range, 1.5 s). S3 ignores the query
-    // and answers the header. Each range is then its own cache entry, so a
-    // reload reads nothing twice.
-    const response = await fetch(`${url}?bytes=${range}`, {
-      signal,
-      headers: { Range: `bytes=${range}` },
+    // and answers the header. Each range is its own cache entry on an address
+    // fixed per range, with the named address as the fallback.
+    return readFromMirror(url, start, signal, async (address) => {
+      const response = await fetch(`${address}?bytes=${range}`, { signal, headers: { Range: `bytes=${range}` } })
+      // Not a partial answer: the server ignored the range. A 200 would be the whole file, so its body is cancelled.
+      if (response.status !== 206) {
+        await response.body?.cancel().catch(() => undefined)
+        throw new DemHttpError(response.status)
+      }
+      return {
+        bytes: new Uint8Array(await response.arrayBuffer()),
+        totalBytes: contentRangeTotal(response.headers.get('Content-Range')),
+      }
     })
-    // Anything but a partial answer means the server ignored the range; a
-    // 200 here would be the whole multi-gigabyte file, so its body is
-    // cancelled rather than left streaming.
-    if (response.status !== 206) {
-      await response.body?.cancel().catch(() => undefined)
-      throw new DemHttpError(response.status)
-    }
-    return {
-      bytes: new Uint8Array(await response.arrayBuffer()),
-      totalBytes: contentRangeTotal(response.headers.get('Content-Range')),
-    }
   },
 }
 
@@ -90,7 +88,7 @@ export interface ElevationAdapterOptions {
   chunkPx: number
   /** Chunks kept; the least recently needed go first. */
   maxChunks: number
-  /** Range requests in flight at once. */
+  /** Range requests in flight at once; by default six per address the file answers on. */
   concurrency: number
   /** A file whose cells take at most this many bytes is read whole, once. */
   wholeFileMaxBytes: number
@@ -99,7 +97,7 @@ export interface ElevationAdapterOptions {
 const DEFAULT_OPTIONS: ElevationAdapterOptions = {
   chunkPx: 1024,
   maxChunks: 4096,
-  concurrency: 6,
+  concurrency: PER_HOST_CONNECTIONS,
   wholeFileMaxBytes: 16_000_000,
 }
 
@@ -131,7 +129,7 @@ export class DemElevationAdapter {
   constructor(source: DemSource, io: ElevationIo = browserElevationIo, options: Partial<ElevationAdapterOptions> = {}) {
     this.source = source
     this.io = io
-    this.options = { ...DEFAULT_OPTIONS, ...options }
+    this.options = { ...DEFAULT_OPTIONS, concurrency: PER_HOST_CONNECTIONS * mirrorsOf(source.url).length, ...options }
     this.noDataCell = source.sample === 'float32' ? Math.fround(source.noData) : source.noData
     if (source.widthPx / this.options.chunkPx > KEY_STRIDE) throw new Error('Too many chunks per row for the cache key')
   }
