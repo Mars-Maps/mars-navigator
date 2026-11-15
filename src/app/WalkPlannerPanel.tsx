@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { unavailable, type MarsCoordinate, type MissionSettings } from '../domain'
+import { unavailable, type MarsCoordinate, type MissionSettings, type RouteRequest, type WalkPlan } from '../domain'
 import { GoalPickerView, type PlanStatus } from '../features/mission-ui/walk/GoalPicker'
 import { DEFAULT_MISSION_SETTINGS } from '../features/mission-ui/walk/missionSettings'
 import { planIndexOfKind, walksOfPlans } from '../features/mission-ui/walk/walkCardFigures'
@@ -16,6 +16,7 @@ import { readRoverTraverse } from './roverFeed'
 import { noWalkReason, plannedWalks, planWalks, type WalkOutcome, type WalksPlanner } from './planWalks'
 import { sampleProfile } from './routeProfile'
 import { craterFromNames, walkDrafts } from './walkDrafts'
+import { walkRouteRequest } from './walkNavigation'
 import { createWalkPlanner, landingSiteProblem, planStatusAt, standAtWalkStart, walkHeights } from './walkPlanner'
 
 const WALK_PLANNER = createWalkPlanner({
@@ -69,9 +70,14 @@ const kept: { outcomes: readonly WalkOutcome[]; settings: MissionSettings } = {
  * walk-plan store; the rest keep their reasons here, for step 3. Moving the landing
  * site or closing the panel cancels a plan still running, so an answer for
  * an old site never lands.
+ *
+ * `onNavigate` is the shell's route planner: the walk on show can be handed
+ * to navigation (`navigateWalk`).
  */
-export function WalkPlannerPanel() {
+export function WalkPlannerPanel({ onNavigate }: { onNavigate?: (request: RouteRequest) => void }) {
   const landing = useLandingSite((s) => s.landingSite)
+  // Navigation is entered from close-up only (`canTransition`): not from the welcome screen, and not while navigating.
+  const canNavigate = useMissionStore((s) => canTransition(s.viewMode, 'navigation'))
   const plan = useWalkPlan((s) => s.plan)
   const plans = useWalkPlan((s) => s.plans)
   const canStand = useMissionStore((s) => canTransition(s.viewMode, 'surface'))
@@ -177,6 +183,24 @@ export function WalkPlannerPanel() {
       }}
       canStand={canStand}
       onStand={standAtWalkStart}
+      canNavigate={canNavigate}
+      onNavigate={onNavigate && plan ? () => navigateWalk(plan, onNavigate) : undefined}
     />
   )
+}
+
+/**
+ * Hands the selected walk to navigation: its stops become the
+ * route's, from the landing site and back to it. The search bar's draft is
+ * set to the same route, so the route line reads as the walk and End
+ * navigation leaves it there to change. Once navigation has it, the tool
+ * closes: the navigation panels take over, and the walk stays in the store.
+ */
+function navigateWalk(plan: WalkPlan, navigate: (request: RouteRequest) => void) {
+  const request = walkRouteRequest(plan)
+  if (!request) return
+  if (!canTransition(useMissionStore.getState().viewMode, 'navigation')) return
+  useMissionStore.setState({ routeDraft: { departure: request.departure, destination: request.destination, stops: [...request.stops] } })
+  navigate(request)
+  if (useMissionStore.getState().viewMode === 'navigation') useMissionStore.getState().setActiveTool(null)
 }

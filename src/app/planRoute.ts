@@ -1,4 +1,4 @@
-import type { RouteOption, RouteRequest } from '../domain'
+import type { RouteOption, RouteRequest, RouteStrategy } from '../domain'
 import { placeholderOption } from '../features/route-analysis/strategies/placeholder'
 import { getStrategy, STRATEGY_ORDER } from '../features/route-analysis/strategies/registry'
 import type { RouteTerrain } from '../features/route-analysis/strategies/types'
@@ -9,15 +9,16 @@ import type { RouteTerrain } from '../features/route-analysis/strategies/types'
  * import each other: mission-ui asks, route-analysis answers, and the app
  * joins them.
  *
- * Every strategy answers at once, in the UI's order. A strategy without a
+ * Every strategy answers at once, in the UI's order; `strategies` narrows
+ * the list where only some apply (a planned walk is navigated by two). A strategy without a
  * method returns its option with `path` UNAVAILABLE and the reason, so the
  * picker can list it honestly; the store picks the first with a DERIVED
  * path to draw (`defaultRouteOption`). A strategy that routes on terrain
  * answers here with "being planned", and for real from
  * `planRouteOnTerrain`.
  */
-export function planRouteOptions(request: RouteRequest): RouteOption[] {
-  return STRATEGY_ORDER.map((id) => getStrategy(id).plan(request))
+export function planRouteOptions(request: RouteRequest, strategies: readonly RouteStrategy[] = STRATEGY_ORDER): RouteOption[] {
+  return strategies.map((id) => getStrategy(id).plan(request))
 }
 
 /**
@@ -31,9 +32,10 @@ export async function planRouteOnTerrain(
   request: RouteRequest,
   terrain: RouteTerrain,
   signal: AbortSignal,
+  strategies: readonly RouteStrategy[] = STRATEGY_ORDER,
 ): Promise<RouteOption[]> {
   return Promise.all(
-    STRATEGY_ORDER.map(async (id) => {
+    strategies.map(async (id) => {
       const strategy = getStrategy(id)
       if (!strategy.planOnTerrain) return strategy.plan(request)
       try {
