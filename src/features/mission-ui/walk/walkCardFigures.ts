@@ -153,15 +153,21 @@ export function energyCaveat(walks: readonly WalkOption[]): string | null {
   return planned ? planned.fit.energyCaveat : null
 }
 
+/** Whether the walk's last stop is its start again: the closing stop, the way back. */
+export function endsAtStart(stops: readonly { coordinate: { latitude: number; longitudeEast: number } }[]): boolean {
+  if (stops.length < 3) return false
+  const first = stops[0].coordinate
+  const last = stops[stops.length - 1].coordinate
+  return first.latitude === last.latitude && first.longitudeEast === last.longitudeEast
+}
+
 /**
  * A plan's stops in words. The start is not a numbered stop, and neither is
  * the closing stop of a walk that ends back where it began: "the start, 2
  * stops and the way back" for Start, Stop 1, Stop 2 and the return.
  */
 export function stopsPhrase(stops: readonly { coordinate: { latitude: number; longitudeEast: number } }[]): string {
-  const first = stops[0]?.coordinate
-  const last = stops[stops.length - 1]?.coordinate
-  const returns = stops.length > 2 && first.latitude === last.latitude && first.longitudeEast === last.longitudeEast
+  const returns = endsAtStart(stops)
   const places = stops.length - 1 - (returns ? 1 : 0)
   const counted = places === 1 ? '1 stop' : `${places} stops`
   return returns ? `the start, ${counted} and the way back` : `the start and ${counted}`

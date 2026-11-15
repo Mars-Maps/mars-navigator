@@ -103,11 +103,12 @@ export function createWalkPlanner(sources: WalkPlannerSources): WalkPlanner {
       if (stops.length < 2) return unavailable(FLAT_BEDROCK_REASONS.otherUnits)
       // On the stops as confirmed: a dropped stop changes the walk the places lie along. On the way
       // out only: the way back is for coming back, and over one polygon it is the ground already sampled.
-      const placesKm = floorSamplePlacesKm(stops.map((s) => s.coordinate), units.value, samples)
+      const placesFor = (path: readonly MarsCoordinate[]) => floorSamplePlacesKm(path, units.value, samples)
+      const placesKm = placesFor(stops.map((s) => s.coordinate))
       const method = draft.classification === 'DERIVED' ? draft.method : draft.source
       // The walk ends where it began. A stop the map dropped only shortens it, so the reach still holds.
       const closed = [...stops, returnStop(FLAT_BEDROCK_GOAL, stops.length + 1, stops[0])]
-      return derived({ goal: FLAT_BEDROCK_GOAL, stops: closed, ...(placesKm.length > 0 ? { placesKm } : {}) }, method)
+      return derived({ goal: FLAT_BEDROCK_GOAL, stops: closed, ...(placesKm.length > 0 ? { placesKm, placesFor } : {}) }, method)
     },
   }
 }

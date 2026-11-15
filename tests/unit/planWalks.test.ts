@@ -292,3 +292,49 @@ describe('planWalks: a walk that returns must return within the settings', () =>
     expect(walk.samplesNote ?? '').not.toContain('left off')
   })
 })
+
+describe('planWalks: the samples of a walk that comes back (review of the return leg)', () => {
+  const xKm = (c: MarsCoordinate) => (c.longitudeEast - JEZERO.longitudeEast) * KM_PER_DEG_LON
+  /** Out 1.05 km east and straight back, with no places of its own: the shell spaces the samples. */
+  const thereAndBack: DraftWalk = async (start) =>
+    derived({ goal: FLOOR, stops: [stop('s0', start), stop('s1', at(1.05)), stop('back', start)] }, 'fixture')
+
+  it('samples the way out only: six places, none twice, none on the way back', async () => {
+    const [walk] = plannedWalks(await run(planner({ 'flat-bedrock': thereAndBack })))
+    const xs = (walk.plan.samples ?? []).map((s) => xKm(s.coordinate))
+    expect(xs).toHaveLength(6)
+    // In walking order they only go out: a sample on the way back would come nearer the start again.
+    expect([...xs].sort((a, b) => a - b)).toEqual(xs)
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeGreaterThan(0.099)
+    expect(xs[xs.length - 1]).toBeLessThanOrEqual(1.05 + 1e-6)
+  })
+
+  it('keeps the samples of a longer out-and-back walk apart on the ground too', async () => {
+    const outAndBack: DraftWalk = async (start) =>
+      derived({ goal: FLOOR, stops: [stop('s0', start), stop('s1', at(1)), stop('s2', at(2)), stop('s3', at(3)), stop('back', start)] }, 'fixture')
+    const [walk] = plannedWalks(await run(planner({ 'flat-bedrock': outAndBack })))
+    const xs = (walk.plan.samples ?? []).map((s) => xKm(s.coordinate))
+    expect(xs.length).toBeGreaterThan(1)
+    expect(new Set(xs.map((x) => x.toFixed(3))).size).toBe(xs.length)
+    expect(Math.max(...xs)).toBeLessThanOrEqual(3 + 1e-6)
+  })
+
+  it('spreads the samples again over the walk that is left when a stop is left off', async () => {
+    // The walk's own places: six, evenly over the way out, as the flat bedrock walk spreads them over the floor.
+    const outKm = (path: readonly MarsCoordinate[]) => xKm(path[path.length - 1])
+    const placesFor = (path: readonly MarsCoordinate[]) => Array.from({ length: 6 }, (_, i) => (outKm(path) * (i + 1)) / 7)
+    const draft: DraftWalk = async (start) => {
+      const stops = [stop('s0', start), stop('s1', at(1)), stop('s2', at(2)), stop('s3', at(3)), stop('back', start)]
+      return derived({ goal: FLOOR, stops, placesKm: placesFor(stops.slice(0, -1).map((s) => s.coordinate)), placesFor }, 'fixture')
+    }
+    // 6 km is 180 min of walking, over 160; without the last stop it is 4 km, 120 min, and six samples fit.
+    const [walk] = plannedWalks(await run(planner({ 'flat-bedrock': draft }), { ...DEFAULT_MISSION_SETTINGS, durationMin: 160 }))
+    expect(walk.plan.stops.map((s) => s.id)).toEqual(['s0', 's1', 's2', 'back'])
+    const xs = (walk.plan.samples ?? []).map((s) => xKm(s.coordinate))
+    // All six, over the 2 km still walked out: cutting the first walk's places to it would leave four.
+    expect(xs).toHaveLength(6)
+    expect(Math.max(...xs)).toBeLessThanOrEqual(2 + 1e-6)
+    expect(walk.samplesNote).toContain('1 stop was left off')
+    expect(walk.samplesNote).not.toContain('found no room')
+  })
+})

@@ -46,6 +46,12 @@ export interface WalkDraft {
   /** Km along the walk where its samples belong (unit contacts); evenly spaced without. */
   placesKm?: readonly number[]
   /**
+   * `placesKm` again for a shorter way out, `path` being the stops kept
+   * without the way back: asked when the shell leaves a stop off, so the
+   * samples are spread over the walk that is left, not only cut to it.
+   */
+  placesFor?: (path: readonly MarsCoordinate[]) => readonly number[]
+  /**
    * The samples, where the walk places and fits them itself (the transect,
    * the rover check): taken as they are, the shell only costs and checks
    * them. Without, the shell places them (`placesKm`, else evenly).
@@ -130,7 +136,8 @@ async function planOneWalk(
   try {
     const draft = await planner.drafts[kind](start, settings, signal)
     if (draft.classification === 'UNAVAILABLE') return fail(draft.reason)
-    const { goal, placesKm, notes = [] } = draft.value
+    const { goal, placesFor, notes = [] } = draft.value
+    let placesKm = draft.value.placesKm
     const slopeLimit = slopeLimitOf(settings)
     const own = draft.value.samples
     let stops: readonly WalkStop[] = draft.value.stops
@@ -145,7 +152,7 @@ async function planOneWalk(
       ])
       if (profile.classification === 'UNAVAILABLE') return fail(`The heights along the walk could not be read: ${profile.reason}`)
 
-      const placed = own ? { samples: [...own], note: null } : samplesFor(profile.value, settings, placesWithin(placesKm, stops))
+      const placed = own ? { samples: [...own], note: null } : samplesFor(profile.value, settings, placesKm, wayOutKm(stops))
       const { samples } = placed
       // The walk's slope is its legs' slope, the figure their flags show, so
       // the fit and the flags never disagree; the profile's stretches only
@@ -153,16 +160,17 @@ async function planOneWalk(
       const budget = { ...walkBudget(profile.value, samples.length), steepestDeg: steepestLeg(legs) }
       const fit = fitsSettings(budget, settings)
       // A walk whose stops were chosen on level ground can cost more on its real heights. It must
-      // still get back within the settings: the farthest stop goes, and the shorter walk is costed again.
+      // still get back within the settings: the last place visited goes, and the shorter walk is costed again.
       if (!own && canShorten(stops) && fit.breaks.some((b) => b.limit !== 'slope')) {
         stops = [...stops.slice(0, -2), stops[stops.length - 1]]
         leftOff++
+        placesKm = placesOnShorter(placesKm, placesFor, stops)
         continue
       }
       const shortened =
         leftOff === 0
           ? null
-          : `${leftOff} stop${leftOff === 1 ? ' was' : 's were'} left off: on the heights along the walk, going that far and coming back was over the time or the energy of the settings`
+          : `${leftOff} stop${leftOff === 1 ? ' was' : 's were'} left off the end of the walk: on the heights along the walk, going on to ${leftOff === 1 ? 'it' : 'them'} and coming back was over the time or the energy of the settings`
       const note = joinSentences([placed.note, shortened, ...notes])
       const plan: WalkPlan = { goal, stops, legs, slopeLimit, kind, settings, samples }
       const problem = walkPlanProblem(plan)
@@ -175,27 +183,48 @@ async function planOneWalk(
 }
 
 /**
- * Whether a walk that ends where it began can lose its farthest stop and
- * still be a walk: the start, two places or more, and the way back.
+ * Whether a walk that ends where it began can lose its last place visited
+ * and still be a walk: the start, two places or more, and the way back.
  */
 function canShorten(stops: readonly WalkStop[]): boolean {
-  if (stops.length < 4) return false
+  return stops.length >= 4 && returnsToStart(stops)
+}
+
+/** Whether the walk's last stop is its first again: the way back to the landing site. */
+function returnsToStart(stops: readonly WalkStop[]): boolean {
+  if (stops.length < 3) return false
   const first = stops[0].coordinate
   const last = stops[stops.length - 1].coordinate
   return first.latitude === last.latitude && first.longitudeEast === last.longitudeEast
 }
 
 /**
- * The walk's own sample places that are still on it: `placesKm` is measured
- * along the way out as the draft made it, so with stops left off only the
- * places up to the last stop kept hold. Unchanged for a walk as drafted.
+ * Km along the walk where its way out ends, summed stop to stop as the
+ * profile sums it: the last place visited of a walk that returns to its
+ * start. Undefined for a walk that does not return, all of which is the way out.
  */
-function placesWithin(placesKm: readonly number[] | undefined, stops: readonly WalkStop[]): readonly number[] | undefined {
+function wayOutKm(stops: readonly WalkStop[]): number | undefined {
+  if (!returnsToStart(stops)) return undefined
+  let km = 0
+  for (let i = 1; i < stops.length - 1; i++) km += surfaceDistanceKm(stops[i - 1].coordinate, stops[i].coordinate)
+  return km
+}
+
+/**
+ * The walk's own sample places once a stop is left off. The draft places
+ * them again on the shorter way out where it can (`placesFor`), so the
+ * samples are spread over the ground still walked; without, only the
+ * places up to the last stop kept hold. None left means evenly spaced.
+ */
+function placesOnShorter(
+  placesKm: readonly number[] | undefined,
+  placesFor: WalkDraft['placesFor'],
+  stops: readonly WalkStop[],
+): readonly number[] | undefined {
   if (!placesKm) return undefined
-  let outKm = 0
-  // Up to the last place visited: the closing stop is the way back, where no sample of the draft lies.
-  for (let i = 1; i < stops.length - 1; i++) outKm += surfaceDistanceKm(stops[i - 1].coordinate, stops[i].coordinate)
-  return placesKm.filter((km) => km <= outKm + 1e-9)
+  const outKm = wayOutKm(stops) ?? Infinity
+  const places = placesFor ? placesFor(stops.slice(0, -1).map((s) => s.coordinate)) : placesKm.filter((km) => km <= outKm + 1e-9)
+  return places.length > 0 ? places : undefined
 }
 
 /** Sentences joined into one note, each ending in a full stop; null with none. */
@@ -220,18 +249,24 @@ export function steepestLeg(legs: readonly WalkLeg[]): Classified<number> {
 
 /**
  * As many of the settings' samples as the duration leaves room for
- * (`maxSamplesThatFit`), placed on the walk (`placeSamples`), with why any
- * are missing.
+ * (`maxSamplesThatFit`), placed on the walk's way out (`placeSamples`, up
+ * to `uptoKm`), with why any are missing.
  */
 function samplesFor(
   profile: ElevationProfile,
   settings: MissionSettings,
   placesKm: readonly number[] | undefined,
+  uptoKm: number | undefined,
 ): { samples: SampleStop[]; note: string | null } {
   const walking = walkBudget(profile, 0)
   const room = maxSamplesThatFit(walking, settings)
   const count = room.classification === 'UNAVAILABLE' ? settings.samples : Math.min(settings.samples, room.value)
-  const placed = placeSamples(profile, count, { maxSlopeDeg: settings.maxSlopeDeg, ...(placesKm ? { placesKm } : {}) })
+  const placed = placeSamples(profile, count, {
+    maxSlopeDeg: settings.maxSlopeDeg,
+    ...(placesKm ? { placesKm } : {}),
+    // A walk that comes back is sampled on the way out only: the way back is for coming back.
+    ...(uptoKm === undefined ? {} : { uptoKm }),
+  })
   const samples = placed.classification === 'UNAVAILABLE' ? [] : placed.value.samples
   const missing = settings.samples - samples.length
   if (missing === 0) return { samples, note: null }

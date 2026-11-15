@@ -202,7 +202,7 @@ function PlanSummary({ plan, canStand, onStand }: { plan: WalkPlan; canStand: bo
     <section aria-label="Planned walk" className="flex flex-col gap-1.5">
       <p className="flex items-center gap-1.5 text-caption text-ink-subtle">
         <span>
-          {/* The start is not a numbered stop: "the start and 3 stops" for Start, Stop 1–3. */}
+          {/* Neither the start nor the way back is a numbered stop: "the start, 3 stops and the way back". */}
           Planned: <span className="text-ink">{plan.goal.label}</span>, {stopsPhrase(plan.stops)}
         </span>
         <ClassificationBadge classification={plan.goal.reason.classification} detail={detailOf(plan.goal)} />

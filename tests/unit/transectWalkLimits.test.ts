@@ -133,7 +133,7 @@ describe('the review of the transect', () => {
     expect([...xs].sort((a, b) => a - b)).toEqual(xs)
     expect(walk.value.unitsCrossed).toEqual(['Crater rim unit', 'Jezero floor unit', 'Jezero fan 2 unit'])
     expect(walk.value.notes.join(' ')).toContain("on the rim's side of the landing site")
-    expect(walk.value.stops[walk.value.stops.length - 1].reason).toMatchObject({ value: 'The landing site, where this transect ends' })
+    expect(walk.value.stops[walk.value.stops.length - 1].reason).toMatchObject({ value: expect.stringContaining('The landing site again') })
   })
 
   it('says the inset is along the line, which is all it measures', () => {
@@ -215,7 +215,7 @@ describe('the review of the transect', () => {
     const { walk } = walkOn(units, START, settings({ durationMin: 60 }))
     if (walk.classification !== 'DERIVED') throw new Error('no walk')
     const last = walk.value.stops[walk.value.stops.length - 1]
-    expect(last.label).toContain('back at the landing site')
+    expect(last.label).toBe(RETURN_STOP_LABEL)
     expect(walk.value.notes.join(' ')).not.toContain('The walk ends')
     // The floor is down that leg and an hour does not reach it: the note gives that reason, not "no unit".
     expect(walk.value.notes.join(' ')).not.toContain('that leg would add no unit to sample')
@@ -253,7 +253,7 @@ describe('the review of the transect', () => {
     expect(walk.stops[1].label).toBe('Stop 1 · Crater rim unit')
     const reads = [official(unit('Jezero floor unit'), MAP.citation), official(unit('Read unit'), MAP.citation), unavailable<GeologicUnit>('fixture: a contact')]
     const stops = confirmTransectStops(walk.stops, reads)
-    expect(stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · Read unit', 'Stop 2 · back at the landing site'])
+    expect(stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · Read unit', RETURN_STOP_LABEL])
     expect(confirmTransectStops(walk.stops, [reads[0], reads[2]])[1].label).toBe('Stop 1')
   })
 

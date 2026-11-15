@@ -277,18 +277,16 @@ export function transectWalk(
   const stops: WalkStop[] = [stop(1, 'Start', start, unitAt[iStart], 'The landing site, where the walk starts')]
   const add = (name: string, i: number, why: string) =>
     stops.push(stop(stops.length + 1, `Stop ${stops.length} · ${name}`, i === iStart ? start : base[i].coordinate, unitAt[i], why))
-  const startOnFloor = line.startUnit !== null && TRANSECT_FLOOR_UNITS.includes(line.startUnit.name)
   if (turn < iStart) {
     add(unitAt[turn]?.name ?? 'rim-side end', turn, 'The rim-side end of the transect: the walk goes out to it first and samples on the way back')
-    add(
-      'back at the landing site',
-      iStart,
-      end > iStart
-        ? 'The way back passes the landing site and goes on toward the floor'
-        : startOnFloor
-          ? 'The floor end of the transect, which is the landing site'
-          : 'The landing site, where this transect ends',
-    )
+    // A transect that ends at the landing site ends as every walk does, with the way back as its closing stop.
+    if (end > iStart) add('back at the landing site', iStart, 'The way back passes the landing site and goes on toward the floor')
+    else {
+      // The way back here is along the line itself, so the closing stop carries the line's method too.
+      const back = returnStop(TRANSECT_GOAL, stops.length + 1, stops[0])
+      const why = back.reason
+      stops.push(why.classification === 'DERIVED' ? { ...back, reason: derived(why.value, `${line.method}. ${why.method}`) } : back)
+    }
   }
   if (end > iStart) {
     add(unitAt[end]?.name ?? 'floor end', end, 'The floor-side end of the transect: the walk turns round here and comes back to the landing site')

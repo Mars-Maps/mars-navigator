@@ -54,7 +54,7 @@ describe('the transect walk', () => {
     expect(walk.samples.map((s) => s.sample.order)).toEqual([1, 2, 3, 4, 5, 6])
     const xs = walk.samples.map((s) => xOf(s.sample.coordinate))
     expect([...xs].sort((a, b) => a - b)).toEqual(xs)
-    expect(walk.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · Crater rim unit', 'Stop 2 · back at the landing site'])
+    expect(walk.stops.map((s) => s.label)).toEqual(['Start', 'Stop 1 · Crater rim unit', RETURN_STOP_LABEL])
     expect(walk.stops[2].coordinate).toEqual(START)
     expect(walk.notes).toEqual([NEAREST_NOTE])
   })
