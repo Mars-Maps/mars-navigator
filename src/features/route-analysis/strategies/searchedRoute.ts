@@ -157,10 +157,14 @@ function searchedOption(
   })
   // Every node the path walks, not only its turns: a hazard scan of the turns alone would
   // average a straight run into one stretch and miss steep ground inside it.
+  // A stop between two legs is kept twice, once with each leg's height for it: each leg gives
+  // the stop the height of its own nearest node, on its own lattice, and the two can differ.
+  // With one of them dropped, the few metres from the stop to the next leg's first node would
+  // carry that difference and read as a slope no ground has. Twice, the pair has no length,
+  // which a scan passes over, and each leg's join to the stop stays level as the search walked it.
   const walked: SurfacePoint[] = []
-  legs.forEach((leg, l) => {
-    leg.walked.forEach((node, n) => {
-      if (l > 0 && n === 0) return
+  legs.forEach((leg) => {
+    leg.walked.forEach((node) => {
       walked.push({
         id: `${strategy}-w${walked.length}`,
         coordinate: node.coordinate,

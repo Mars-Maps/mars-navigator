@@ -36,6 +36,26 @@ describe('the slope scan of a searched route looks at every step', () => {
   })
 })
 
+describe('the slope scan of a searched route at a stop between two legs', () => {
+  // Each leg gives the stop its own nearest node's height, on its own lattice. On a 10° plane
+  // the two differ by a metre or so, and over the few metres to the next leg's first node
+  // that read as a slope of 15° to 24° at the stop.
+  const plane = (x: number) => x * 1000 * Math.tan((10 * Math.PI) / 180)
+
+  it('raises no steep slope at the stop on ground that is 10° everywhere', async () => {
+    for (let k = 0; k < 24; k++) {
+      const request: RouteRequest = {
+        departure: at(0, 0),
+        stops: [at(0.3 + k * 0.0037, 0.1 + k * 0.0053)],
+        destination: at(0.7, 0.05),
+      }
+      const option = await planFastest(request, fixtureTerrain(plane), signal)
+      if (!isAvailable(option.path)) throw new Error(option.path.reason)
+      expect(slopeHazards(option.hazards), `stop ${k}`).toEqual([])
+    }
+  })
+})
+
 describe('routeSlopeHazards', () => {
   const point = (id: string, coordinate: MarsCoordinate, heightM: number): SurfacePoint => ({
     id,

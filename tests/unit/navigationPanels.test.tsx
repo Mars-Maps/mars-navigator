@@ -166,6 +166,14 @@ describe('HazardsPanel says what this scan did (review of the hazards panel)', (
     expect(html).toContain('fixture slope scan')
   })
 
+  it('gives a reason that holds "; " and brackets whole, not cut at the first of them', () => {
+    const reason = 'no two points have a height (the straight line carries none; a searched path does)'
+    const route = withHazards(
+      derived([], `Scanned for radiation: fixture radiation scan. Not scanned: slope (${reason}); dust (dust detection not implemented)`),
+    )
+    expect(hidden(renderToStaticMarkup(<HazardsPanel route={route} />))).toContain(reason)
+  })
+
   it('never says "none found" of a kind this scan could not run', () => {
     const html = renderToStaticMarkup(<HazardsPanel route={noSlope} />)
     expect(visible(html)).toContain('Radiation: none found')

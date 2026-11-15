@@ -172,9 +172,18 @@ const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 function notScannedReason(hazards: RouteOption['hazards'], kind: HazardKind): string {
   const fallback = 'This scan could not run it on this route'
   if (hazards.classification !== 'DERIVED') return fallback
+  // "kind (reason); kind (reason)": a reason may hold "; " and brackets itself, so an entry
+  // ends where the next kind's entry starts, or at the end, not at the first "; ".
   const notScanned = hazards.method.split('. Not scanned: ')[1] ?? ''
-  const at = notScanned.split('; ').find((part) => part.startsWith(`${kind} (`))
-  return at ? at.slice(kind.length + 2, -1) : fallback
+  const starts = (Object.keys(HAZARD_LABEL) as HazardKind[])
+    .map((k) => ({ kind: k, at: notScanned.startsWith(`${k} (`) ? 0 : notScanned.indexOf(`); ${k} (`) }))
+    .filter((entry) => entry.at !== -1)
+    .map((entry) => ({ kind: entry.kind, at: entry.at === 0 ? 0 : entry.at + 3 }))
+    .sort((a, b) => a.at - b.at)
+  const n = starts.findIndex((entry) => entry.kind === kind)
+  if (n === -1) return fallback
+  const end = n + 1 < starts.length ? starts[n + 1].at - 2 : notScanned.length
+  return notScanned.slice(starts[n].at + kind.length + 2, end - 1)
 }
 
 export function HazardsMethodology({ route }: { route: RouteOption }) {

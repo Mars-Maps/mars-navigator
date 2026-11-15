@@ -186,9 +186,93 @@ describe('the slope detector', () => {
     }
   })
 
+  /** Points along one parallel with stretches of the given lengths (m) and slopes (°). Test fixture only. */
+  const stretches = (...parts: [metres: number, deg: number][]): SurfacePoint[] => {
+    let km = 0
+    let height = 0
+    const points = [{ km, height }]
+    for (const [metres, deg] of parts) {
+      km += metres / 1000
+      height += metres * Math.tan((deg * Math.PI) / 180)
+      points.push({ km, height })
+    }
+    return points.map((p, i) => ({
+      id: `s${i}`,
+      coordinate: { latitude: 18.44, longitudeEast: 77.45 + p.km / KM_PER_DEG_LON },
+      elevationMeters: official(p.height, 'fixture DEM'),
+    }))
+  }
+  const warnings = (points: SurfacePoint[]) => {
+    const result = slopeDetector.detect(points)
+    if (result.classification !== 'DERIVED') throw new Error('expected a scan')
+    return result.value
+  }
+
+  it('keeps one warning over a single gentler stretch, however long, and says how much of the reach is steep', () => {
+    const found = warnings(stretches([300, 16], [300, 0], [300, 18]))
+    expect(found).toHaveLength(1)
+    const [h] = found
+    if (h.magnitude.classification !== 'DERIVED') throw new Error('expected a figure')
+    expect(h.magnitude.value).toBeCloseTo(18, 1)
+    expect(h.magnitude.method).toMatch(/^The steepest stretch of 600 m of steep ground in 900 m of the route starting 0 m along the route/)
+  })
+
+  it('counts the gentler ground afresh after each steep stretch', () => {
+    // One short gentler stretch, steep again, then one long one: each gap is a single stretch.
+    expect(warnings(stretches([20, 16], [20, 0], [20, 16], [300, 0], [20, 16]))).toHaveLength(1)
+  })
+
+  it('does not count a stretch of no length as gentler ground', () => {
+    const points = stretches([20, 16], [300, 0], [20, 16])
+    expect(warnings([points[0], points[1], { ...points[1], id: 'again' }, points[2], points[3]])).toHaveLength(1)
+  })
+
+  it('takes a stop written either side of 0°/360°E as one place, whatever the two heights given for it', () => {
+    const stop = { latitude: 18.44, longitudeEast: 77.45 }
+    const point = (id: string, coordinate: SurfacePoint['coordinate'], m: number): SurfacePoint => ({ id, coordinate, elevationMeters: official(m, 'fixture DEM') })
+    const result = slopeDetector.detect([
+      point('before', { latitude: 18.44, longitudeEast: 77.44 }, 0),
+      point('stop, one leg', { ...stop, longitudeEast: stop.longitudeEast + 360 }, 0),
+      point('stop, the next leg', stop, 2),
+      point('after', { latitude: 18.44, longitudeEast: 77.46 }, 2),
+    ])
+    expect(result).toMatchObject({ classification: 'DERIVED', value: [] })
+  })
+
+  it('gives the steep ground and its reach in one unit', () => {
+    const [h] = warnings(stretches([500, 16], [40, 0], [499.8, 16]))
+    if (h.magnitude.classification !== 'DERIVED') throw new Error('expected a figure')
+    expect(h.magnitude.method).toMatch(/^The steepest stretch of 1\.0 km of steep ground starting 0 m along the route/)
+  })
+
+  it('keeps one warning for a rough climb: steep steps with under 100 m of gentler ground between them', () => {
+    // 20 m steps at 16° and 13° in turn, ending on a gentler one; three more make four together (80 m), then steep again.
+    const heights = [0]
+    const step = (deg: number) => heights.push(heights[heights.length - 1] + 20 * Math.tan((deg * Math.PI) / 180))
+    for (let i = 0; i < 20; i++) step(i % 2 === 0 ? 16 : 13)
+    for (let i = 0; i < 3; i++) step(13)
+    step(16)
+    const result = slopeDetector.detect(profile(0.02, ...heights))
+    if (result.classification !== 'DERIVED') throw new Error('expected a scan')
+    expect(result.value).toHaveLength(1)
+  })
+
+  it('parts the warnings where the gentler ground between them is over 100 m in several stretches', () => {
+    // 120 m and 80 m, clear of the line either side: at 100 m itself the sum of the stretches decides.
+    expect(warnings(stretches([20, 16], ...Array.from({ length: 6 }, (): [number, number] => [20, 13]), [20, 16]))).toHaveLength(2)
+    expect(warnings(stretches([20, 16], ...Array.from({ length: 4 }, (): [number, number] => [20, 13]), [20, 16]))).toHaveLength(1)
+  })
+
+  it('ends a run at a stretch with no height: what lies past it is not known to be the same climb', () => {
+    const result = slopeDetector.detect(profile(0.02, 0, rise(16) / 5, Number.NaN, rise(16) / 5, (2 * rise(16)) / 5))
+    if (result.classification !== 'DERIVED') throw new Error('expected a scan')
+    expect(result.value).toHaveLength(2)
+  })
+
   it('joins neighbouring steep stretches into one warning, with the steepest figure at its middle', () => {
     const h = [0, rise(16), rise(16) + rise(24), rise(16) + rise(24) + rise(17)]
-    const result = slopeDetector.detect(profile(0.1, ...h, h[3], h[3] + rise(18)))
+    // Two gentler stretches, 200 m of level ground, part the two warnings: one would not.
+    const result = slopeDetector.detect(profile(0.1, ...h, h[3], h[3], h[3] + rise(18)))
     if (result.classification !== 'DERIVED') throw new Error('expected a scan')
     expect(result.value).toHaveLength(2)
     const [first, second] = result.value
