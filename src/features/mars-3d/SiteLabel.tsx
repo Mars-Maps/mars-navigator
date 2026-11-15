@@ -56,12 +56,27 @@ export function SiteLabelTracker({
   const centre = useSite((s) => s.site?.centre ?? null)
   // Reused every frame: the world point, a scratch, and what was last
   // written to the element, so a settled scene writes nothing.
-  const scratch = useRef({ world: new Vector3(), tmp: new Vector3(), shown: false, x: NaN, y: NaN })
+  const scratch = useRef({
+    world: new Vector3(),
+    tmp: new Vector3(),
+    el: null as HTMLDivElement | null,
+    shown: false,
+    x: NaN,
+    y: NaN,
+  })
 
   useFrame(({ camera, size }) => {
     const el = labelRef.current
     const mesh = globe.current
     const s = scratch.current
+    // The label is unmounted on the surface and mounted again in orbit: a new
+    // element starts hidden and unplaced, whatever was written to the last one.
+    if (s.el !== el) {
+      s.el = el
+      s.shown = false
+      s.x = NaN
+      s.y = NaN
+    }
     if (!el || !mesh || !centre) return
     // On the picture, not the mean sphere, so the name stays on its place at the 20 km floor.
     mesh.localToWorld(coordinateToLocalPoint(centre, PICK_RADIUS, s.world))
