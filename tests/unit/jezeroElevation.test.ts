@@ -283,7 +283,7 @@ describe('LayeredElevation', () => {
     const read = await layered.elevationsAt(pairs(centreOf(1, 2, 1)), signal())
     expect(read).toMatchObject({ classification: 'OFFICIAL' })
     // The failed model is named, so a reader can tell a failed read from ground no model covers.
-    if (read.classification === 'OFFICIAL') expect(read.value.failed).toEqual(['fixture jezero-hirise-1m: The fixture jezero-hirise-1m server answered HTTP 503'])
+    if (read.classification === 'OFFICIAL') expect(read.value.failed).toEqual([{ model: 0, reason: 'fixture jezero-hirise-1m: The fixture jezero-hirise-1m server answered HTTP 503' }])
     if (read.classification === 'OFFICIAL') expect(read.value.heights[0]).toBe(500)
     expect(ios.fine.requests).toBeGreaterThan(0)
   })

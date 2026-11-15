@@ -335,10 +335,18 @@ describe('the search lattice on a model stated on the Mars 2000 sphere', () => {
 
 describe('a stop with no height after a model failed to read', () => {
   it('says the read failed, not that no model covers the stop', async () => {
-    const failed = ['CTX DTM mosaic of Jezero, 20 m: HTTP 503']
+    const failed = [{ model: 0, reason: 'CTX DTM mosaic of Jezero, 20 m: HTTP 503' }]
     const { option } = await plan((x) => (x < 0.2 ? Number.NaN : 0), request(), { failed })
     expect(reasonOf(option)).toBe(
       'No usable height at the departure: an elevation model could not be read (CTX DTM mosaic of Jezero, 20 m: HTTP 503)',
     )
+  })
+
+  it('does not blame a coarser model the lattice could not have stood on', async () => {
+    // The site model has no data at the departure; the global model, which failed, is too coarse for a 20 m lattice.
+    const failed = [{ model: 1, reason: 'HRSC–MOLA blended DEM v2, 200 m: HTTP 503' }]
+    const coarser = { cellKm: 0.2, z: () => Number.NaN }
+    const { option } = await plan((x) => (x < 0.2 ? Number.NaN : 0), request(), { failed, coarser })
+    expect(reasonOf(option)).toMatch(/^No elevation model has a height at the departure/)
   })
 })

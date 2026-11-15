@@ -17,8 +17,9 @@ import { useMissionStore } from '../state'
 export function useMeasuredTemperature(): MeasuredTemperatureLookup {
   const [jezero, setJezero] = useState<Classified<MedaExtract> | null>(null)
   const [gale, setGale] = useState<Classified<RemsSolRecord[]> | null>(null)
-  const galeSelected = useMissionStore(
-    (s) => s.selectedPoint !== null && insideBounds(s.selectedPoint, GALE_BOUNDS),
+  // The selected point while it is inside Gale: each new one is a new reason to read the feed.
+  const galePoint = useMissionStore((s) =>
+    s.selectedPoint !== null && insideBounds(s.selectedPoint, GALE_BOUNDS) ? s.selectedPoint : null,
   )
   useEffect(() => {
     let cancelled = false
@@ -29,19 +30,34 @@ export function useMeasuredTemperature(): MeasuredTemperatureLookup {
       cancelled = true
     }
   }, [])
-  // Whether the feed is in hand, kept out of the effect's dependencies: a
-  // failed read stores a new UNAVAILABLE answer, and depending on that
-  // answer would start the next read at once, for as long as the feed fails.
-  const galeLoaded = useRef(false)
+  // Whether the feed is in hand, and the read under way, kept out of the
+  // effect's dependencies: a failed read stores a new UNAVAILABLE answer, and
+  // depending on that answer would start the next read at once, for as long
+  // as the feed fails. Another Gale point leaves a read under way alone.
+  const galeRead = useRef<{ loaded: boolean; running: AbortController | null }>({ loaded: false, running: null })
   useEffect(() => {
-    if (!galeSelected || galeLoaded.current) return
+    const read = galeRead.current
+    if (!galePoint) {
+      read.running?.abort()
+      read.running = null
+      return
+    }
+    if (read.loaded || read.running) return
     const controller = new AbortController()
+    read.running = controller
     loadRemsFeed(controller.signal).then((feed) => {
       if (controller.signal.aborted) return
-      if (feed.classification === 'OFFICIAL') galeLoaded.current = true
+      read.running = null
+      if (feed.classification === 'OFFICIAL') read.loaded = true
       setGale(feed)
     })
-    return () => controller.abort()
-  }, [galeSelected])
+  }, [galePoint])
+  useEffect(() => {
+    const read = galeRead.current
+    return () => {
+      read.running?.abort()
+      read.running = null
+    }
+  }, [])
   return useMemo(() => measuredTemperatureLookup({ jezero, gale }), [jezero, gale])
 }
