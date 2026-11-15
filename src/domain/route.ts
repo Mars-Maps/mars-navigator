@@ -1,6 +1,6 @@
 import type { Classified } from './classification'
 import type { MarsCoordinate, SurfacePoint } from './mars'
-import type { Hazard } from './terrain'
+import type { Hazard, HazardKind } from './terrain'
 
 /**
  * What the user asks for: where to start, where to end, and any stops in
@@ -63,4 +63,11 @@ export interface RouteOption {
    * empty list can only ever mean "scanned and none found".
    */
   hazards: Classified<Hazard[]>
+  /**
+   * The hazard kinds the scan behind `hazards` covered on this route, when
+   * that differs from one route to the next (a searched route's mapped
+   * obstacles are scanned only where the geologic map was read). Absent, the
+   * kinds are those of the detector table.
+   */
+  hazardsScanned?: readonly HazardKind[]
 }

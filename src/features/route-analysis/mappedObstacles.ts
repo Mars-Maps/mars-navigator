@@ -114,6 +114,91 @@ export function mappedObstacleHazards(
     )
 }
 
+/**
+ * What the map marks along a path of several straight stretches (a
+ * searched route's leg, turn to turn), in walking order, ids
+ * `${idBase}-obstacle-n`: each marked line crossed, each marked crater within
+ * CRATER_NEAR_KM of the path (once, where it is nearest), and each place the
+ * path enters marked ground from outside it, or starts on it. Worked in one
+ * plane at the path's first point, as the search works a leg in one plane.
+ */
+export function mappedObstaclesAlongPath(
+  path: readonly MarsCoordinate[],
+  features: GeologicFeatures,
+  idBase: string,
+): Hazard[] {
+  if (path.length < 2) return []
+  const p = tangentPlane(path[0])
+  const pts = path.map(p.project)
+  const found: { at: number; kind: string; coordinate: MarsCoordinate; reason: string }[] = []
+
+  for (const line of features.lines) {
+    if (!isKind(OBSTACLE_KINDS.lines, line.kind)) continue
+    const on = line.path.map(p.project)
+    // A crossing at a turn touches the stretch before it and the one after: named once.
+    const seen = new Set<string>()
+    for (let s = 1; s < pts.length; s++) {
+      for (let k = 1; k < on.length; k++) {
+        const hit = segmentCrossing(pts[s - 1], pts[s], on[k - 1], on[k])
+        if (hit === null) continue
+        const key = `${hit.x.toFixed(4)},${hit.y.toFixed(4)}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        found.push({
+          at: s - 1 + hit.t,
+          kind: line.kind,
+          coordinate: p.unproject(hit),
+          reason: `The route crosses a line marked "${line.kind}" on ${named(line.map)}. The map draws where it runs, not how high or steep it is`,
+        })
+      }
+    }
+  }
+
+  for (const crater of features.points) {
+    if (!isKind(OBSTACLE_KINDS.points, crater.kind)) continue
+    const c = p.project(crater.at)
+    let best: { at: number; km: number } | null = null
+    for (let s = 1; s < pts.length; s++) {
+      const near = nearestOnLeg(c, pts[s - 1], pts[s])
+      if (best === null || near.km < best.km) best = { at: s - 1 + near.t, km: near.km }
+    }
+    if (best === null || best.km > CRATER_NEAR_KM) continue
+    found.push({
+      at: best.at,
+      kind: crater.kind,
+      coordinate: crater.at,
+      reason: `A point marked "${crater.kind}" on ${named(crater.map)} lies about ${Math.round(best.km * 1000)} m from the route, inside the ${CRATER_NEAR_KM * 1000} m checked (a project choice, not a cited figure). The map marks where it is, not how wide or deep`,
+    })
+  }
+
+  for (const area of features.areas) {
+    if (!isKind(OBSTACLE_KINDS.areas, area.kind)) continue
+    const rings = area.rings.map((ring) => ring.map(p.project))
+    const reason = `The route runs over ground marked "${area.kind}" on ${named(area.map)}, from this point. The map marks where it is, not how rough`
+    let inside = insideRings(pts[0], rings)
+    if (inside) found.push({ at: 0, kind: area.kind, coordinate: path[0], reason })
+    for (let s = 1; s < pts.length; s++) {
+      if (!inside) {
+        const entry = firstInside(pts[s - 1], pts[s], rings)
+        if (entry !== null) found.push({ at: s - 1 + entry.t, kind: area.kind, coordinate: p.unproject(entry), reason })
+      }
+      inside = insideRings(pts[s], rings)
+    }
+  }
+
+  return found
+    .sort((u, v) => u.at - v.at)
+    .map(
+      (f, n): Hazard => ({
+        id: `${idBase}-obstacle-${n + 1}`,
+        kind: 'mapped-obstacle',
+        unit: f.kind,
+        coordinate: f.coordinate,
+        magnitude: unavailable(f.reason),
+      }),
+    )
+}
+
 /** Where segment ab meets segment cd, with `t` the fraction along ab; null when they do not meet. Touching counts. */
 export function segmentCrossing(a: Xy, b: Xy, c: Xy, d: Xy): (Xy & { t: number }) | null {
   const rx = b.x - a.x

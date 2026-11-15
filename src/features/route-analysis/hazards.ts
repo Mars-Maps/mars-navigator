@@ -126,9 +126,22 @@ export function detectHazards(
   points: readonly SurfacePoint[],
   detectors: Record<HazardKind, HazardDetector> = HAZARD_DETECTORS,
 ): Classified<Hazard[]> {
-  if (points.length === 0) return unavailable(HAZARD_REASONS.empty)
+  return scanHazards(points, detectors).hazards
+}
+
+/**
+ * `detectHazards` with the kinds whose detector ran on these points, for a
+ * route whose coverage is its own (a detector given for that route alone):
+ * a view then names what was scanned on this route, not what the table can.
+ */
+export function scanHazards(
+  points: readonly SurfacePoint[],
+  detectors: Record<HazardKind, HazardDetector> = HAZARD_DETECTORS,
+): { hazards: Classified<Hazard[]>; scanned: HazardKind[] } {
+  if (points.length === 0) return { hazards: unavailable(HAZARD_REASONS.empty), scanned: [] }
 
   const found: Hazard[] = []
+  const kinds: HazardKind[] = []
   const scanned: string[] = []
   const notScanned: string[] = []
   for (const detector of Object.values(detectors)) {
@@ -138,9 +151,12 @@ export function detectHazards(
       continue
     }
     found.push(...result.value)
+    kinds.push(detector.kind)
     scanned.push(`${detector.kind}: ${result.classification === 'DERIVED' ? result.method : result.source}`)
   }
-  if (scanned.length === 0) return unavailable(`${HAZARD_REASONS.nothingScanned}: ${notScanned.join('; ')}`)
+  if (scanned.length === 0) {
+    return { hazards: unavailable(`${HAZARD_REASONS.nothingScanned}: ${notScanned.join('; ')}`), scanned: [] }
+  }
   const coverage = notScanned.length === 0 ? '' : `. Not scanned: ${notScanned.join('; ')}`
-  return derived(found, `Scanned for ${scanned.join('; ')}${coverage}`)
+  return { hazards: derived(found, `Scanned for ${scanned.join('; ')}${coverage}`), scanned: kinds }
 }

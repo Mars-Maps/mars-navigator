@@ -3,8 +3,10 @@ import {
   official,
   unavailable,
   type Classified,
+  type GeologicAreaFeature,
   type GeologicFeatures,
   type GeologicLineFeature,
+  type GeologicPointFeature,
   type GeologicMap,
   type GeologicUnitArea,
   type MarsCoordinate,
@@ -51,6 +53,9 @@ export interface FixtureOptions {
   /** Models named as failed to read (index into the fixture's models), with the heights that did come back. */
   failed?: { model: number; reason: string }[]
   lines?: GeologicLineFeature[]
+  /** The map's point features (small craters) and area features (ridged ground); none by default. */
+  mapPoints?: GeologicPointFeature[]
+  mapAreas?: GeologicAreaFeature[]
   /** The map read fails with this reason. */
   mapFails?: string
   /** The elevation read fails with this reason. */
@@ -96,7 +101,7 @@ export function fixtureTerrain(z: (x: number, y: number) => number, options: Fix
       boxes.push(bounds)
       const features: Classified<GeologicFeatures> = options.mapFails
         ? unavailable(options.mapFails)
-        : official({ points: [], lines: options.lines ?? [], areas: [] }, 'fixture map')
+        : official({ points: options.mapPoints ?? [], lines: options.lines ?? [], areas: options.mapAreas ?? [] }, 'fixture map')
       return Promise.resolve(features)
     },
     units: () =>

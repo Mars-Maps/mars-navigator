@@ -2,14 +2,15 @@ import {
   SUITED_SLOPE_LIMIT,
   derived,
   official,
+  unavailable,
   type MarsCoordinate,
   type RouteOption,
   type RouteRequest,
   type RouteStrategy,
   type SurfacePoint,
 } from '../../../domain'
-import { detectHazards } from '../hazards'
-import { OBSTACLE_KINDS } from '../mappedObstacles'
+import { HAZARD_DETECTORS, scanHazards, type HazardDetector } from '../hazards'
+import { CRATER_NEAR_KM, OBSTACLE_KINDS, mappedObstaclesAlongPath } from '../mappedObstacles'
 import { METABOLIC_COST_METHOD, walkingKcalPerKm } from '../metabolicCost'
 import { searchLeg, type SearchedLeg, type StepCost } from '../terrainSearch'
 import { WALKING_SPEED_METHOD, suitedWalkingKmh } from '../walkingSpeed'
@@ -160,6 +161,7 @@ function searchedOption(
   const hours = steps.reduce((sum, step) => sum + step.km / suitedWalkingKmh(step.s), 0)
   const kcal = steps.reduce((sum, step) => sum + step.km * walkingKcalPerKm(step.s), 0)
   const unchecked = legs.flatMap((leg, l) => (leg.obstacles.checked ? [] : [`leg ${numbers[l]}: ${leg.obstacles.reason}`]))
+  const scan = scanHazards(path, { ...HAZARD_DETECTORS, 'mapped-obstacle': mappedObstacleDetector(strategy, legs, numbers) })
   const obstacles =
     unchecked.length === 0
       ? LINES_KEPT_OFF
@@ -182,6 +184,48 @@ function searchedOption(
       metabolicEnergyKcal: derived(kcal, `Sum over the path's steps of length times the cost of walking its slope. ${METABOLIC_COST_METHOD}`),
     },
     // The path's nodes carry heights, so the shielding scan runs along it; `points` have none.
-    hazards: detectHazards(path),
+    // What the map marks is scanned along each leg's own path, with the features its search read.
+    hazards: scan.hazards,
+    hazardsScanned: scan.scanned,
+  }
+}
+
+const POINT_KINDS = OBSTACLE_KINDS.points.map((k) => `"${k}"`).join(', ')
+const AREA_KINDS = OBSTACLE_KINDS.areas.map((k) => `"${k}"`).join(', ')
+
+/**
+ * The mapped-obstacle scan of one searched route: what the geologic map
+ * marks along each leg's path, from the features that leg's search read.
+ * The search keeps the path off the marked lines, so what is left to find is
+ * a line crossed on the level join to a stop, a marked crater beside the
+ * path and marked ground run over, none of which the search avoids. A leg
+ * whose map was not read is named as not checked; with no leg read the scan
+ * is UNAVAILABLE, never "none found".
+ */
+function mappedObstacleDetector(strategy: RouteStrategy, legs: SearchedLeg[], numbers: number[]): HazardDetector {
+  return {
+    kind: 'mapped-obstacle',
+    requires: HAZARD_DETECTORS['mapped-obstacle'].requires,
+    ready: true,
+    detect() {
+      const unchecked = legs.flatMap((leg, l) => (leg.obstacles.checked ? [] : [`leg ${numbers[l]}: ${leg.obstacles.reason}`]))
+      if (unchecked.length === legs.length) {
+        return unavailable(`The geologic map was not read along the route (${unchecked.join('; ')})`)
+      }
+      const found = legs.flatMap((leg, l) =>
+        leg.obstacles.checked
+          ? mappedObstaclesAlongPath(
+              leg.nodes.map((node) => node.coordinate),
+              leg.obstacles.features,
+              `${strategy}-leg${numbers[l]}`,
+            )
+          : [],
+      )
+      const notChecked = unchecked.length === 0 ? '' : ` Not checked: ${unchecked.join('; ')}`
+      return derived(
+        found,
+        `What the geologic map marks along the path, where its sheet covers the leg: lines marked ${LINE_KINDS} crossed, points marked ${POINT_KINDS} within ${CRATER_NEAR_KM * 1000} m of the path (a project choice, not a cited figure) and ground marked ${AREA_KINDS} run over. The map says where these are, not how high, wide or rough.${notChecked}`,
+      )
+    },
   }
 }

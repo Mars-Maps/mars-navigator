@@ -4,7 +4,7 @@ import { segmentCrossing } from '../../src/features/route-analysis/mappedObstacl
 import { FASTEST_PENDING_REASON, fastest, fastestStepHours, planFastest } from '../../src/features/route-analysis/strategies/fastest'
 import { MAX_SEARCH_CELLS, searchLeg } from '../../src/features/route-analysis/terrainSearch'
 import { SUITED_MAX_KMH } from '../../src/features/route-analysis/walkingSpeed'
-import { KM_PER_DEG_LON, at, fixtureTerrain, line, xyOf } from './terrain.helpers'
+import { KM_PER_DEG_LON, MAP, at, fixtureTerrain, line, xyOf } from './terrain.helpers'
 
 const signal = new AbortController().signal
 const request = (stops: [number, number][] = [], end: [number, number] = [1, 0]): RouteRequest => ({
@@ -348,5 +348,43 @@ describe('a stop with no height after a model failed to read', () => {
     const coarser = { cellKm: 0.2, z: () => Number.NaN }
     const { option } = await plan((x) => (x < 0.2 ? Number.NaN : 0), request(), { failed, coarser })
     expect(reasonOf(option)).toMatch(/^No elevation model has a height at the departure/)
+  })
+})
+
+describe('mapped obstacles along a searched route', () => {
+  const mapped = (option: Awaited<ReturnType<typeof plan>>['option']) => {
+    if (!isAvailable(option.hazards)) throw new Error(`Not scanned: ${option.hazards.reason}`)
+    return option.hazards.value.filter((h) => h.kind === 'mapped-obstacle')
+  }
+
+  it('scans the path where the map was read: none found on a clear map, and the route says the kind was scanned', async () => {
+    const { option } = await plan(flat)
+    expect(mapped(option)).toEqual([])
+    expect(option.hazardsScanned).toEqual(['radiation', 'mapped-obstacle'])
+    if (option.hazards.classification === 'DERIVED') {
+      expect(option.hazards.method).toMatch(/mapped-obstacle: What the geologic map marks along the path/)
+      expect(option.hazards.method).toMatch(/points marked "small crater" within 100 m/)
+    }
+  })
+
+  it('flags a marked crater beside the path and ridged ground it runs over, which the search does not avoid', async () => {
+    const crater = { kind: 'small crater', at: at(0.3, 0.05), map: MAP }
+    const far = { kind: 'small crater', at: at(0.3, 0.6), map: MAP }
+    const ridged = { kind: 'ridged', rings: [[at(0.6, -0.5), at(0.8, -0.5), at(0.8, 0.5), at(0.6, 0.5)]], map: MAP }
+    const { option } = await plan(flat, request(), { mapPoints: [crater, far], mapAreas: [ridged] })
+    const found = mapped(option)
+    expect(found.map((h) => h.unit)).toEqual(['small crater', 'ridged'])
+    expect(found[0].coordinate).toEqual(crater.at)
+    expect(found[0].id).toBe('fastest-leg1-obstacle-1')
+    expect(xyOf(found[1].coordinate).x).toBeCloseTo(0.6, 2)
+  })
+
+  it('does not call the kind scanned where the map could not be read', async () => {
+    const { option } = await plan(flat, request(), { mapFails: 'Map service down' })
+    expect(option.hazardsScanned).toEqual(['radiation'])
+    expect(mapped(option)).toEqual([])
+    if (option.hazards.classification === 'DERIVED') {
+      expect(option.hazards.method).toMatch(/mapped-obstacle \(The geologic map was not read along the route \(leg 1: Map service down\)\)/)
+    }
   })
 })

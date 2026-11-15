@@ -107,7 +107,8 @@ export interface SearchedLeg {
   /** The lattice spacing north–south, km: the model's cell, or a whole multiple of it on a long leg. */
   spacingKm: number
   /** Whether the map's lines were kept off the path, or why they could not be. */
-  obstacles: { checked: true } | { checked: false; reason: string }
+  /** The map's features in the leg's box when it was read, for a scan of what the path still meets. */
+  obstacles: { checked: true; features: GeologicFeatures } | { checked: false; reason: string }
   /** How the path was found, for a DERIVED method. */
   method: string
 }
@@ -313,7 +314,7 @@ export async function searchLeg(
   const turns = chain.filter((k, s) => s === 0 || s === chain.length - 1 || heading(L, chain[s - 1], k) !== heading(L, k, chain[s + 1]))
   const nodes = [node(start, { ...from }), ...turns.map((k) => node(k)), node(goal, { ...to })]
   const obstacles: SearchedLeg['obstacles'] =
-    map.classification === 'UNAVAILABLE' ? { checked: false, reason: map.reason } : { checked: true }
+    map.classification === 'UNAVAILABLE' ? { checked: false, reason: map.reason } : { checked: true, features: map.value }
   const spacing =
     every === 1
       ? `about one model cell apart (${describeKm(L.cy)} north–south, ${describeKm(L.cx)} east–west at this latitude)`
