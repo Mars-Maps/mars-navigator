@@ -62,8 +62,42 @@ export class TileHttpError extends Error {
   }
 }
 
-/** 404 is permanent (the service has no such tile); anything else may pass next time. */
+/**
+ * A tile that arrived whole by HTTP but is not a whole image: a PNG cut off
+ * before its end. The global CTX mosaic's service has such files in its own
+ * cache (zoom 11 round Jezero, seen 2026-11-15: about a third of the tiles,
+ * served with a matching Content-Length and a 30-day max-age). A browser
+ * decodes what there is and leaves the rest clear, so the tile would be
+ * drawn as part of a picture with holes.
+ */
+export class TileCorruptError extends Error {
+  constructor() {
+    super('The tile server sent an incomplete image for a tile')
+    this.name = 'TileCorruptError'
+  }
+}
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+/** A PNG's last twelve bytes: the empty IEND chunk with its length and CRC. */
+const PNG_END = [0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]
+
+/**
+ * Whether a file that starts as a PNG stops before its IEND chunk. `head`
+ * is its first 8 bytes or more, `tail` its last 12. A file that is not a PNG
+ * is not judged: false.
+ */
+export function pngIsTruncated(head: Uint8Array, tail: Uint8Array): boolean {
+  if (head.length < PNG_SIGNATURE.length || PNG_SIGNATURE.some((b, i) => head[i] !== b)) return false
+  const end = tail.subarray(Math.max(0, tail.length - PNG_END.length))
+  return end.length < PNG_END.length || PNG_END.some((b, i) => end[i] !== b)
+}
+
+/**
+ * 404 is permanent (the service has no such tile), and so is an incomplete
+ * image, which the service caches as it is; anything else may pass next time.
+ */
 function retryableTileError(error: unknown): boolean {
+  if (error instanceof TileCorruptError) return false
   return !(error instanceof TileHttpError && error.status === 404)
 }
 
@@ -314,7 +348,10 @@ const browserIo: TileIo = {
   async fetchTile(url, signal) {
     const response = await fetch(url, { signal })
     if (!response.ok) throw new TileHttpError(response.status)
-    return createImageBitmap(await response.blob())
+    const blob = await response.blob()
+    const [head, tail] = await Promise.all([blob.slice(0, 8).arrayBuffer(), blob.slice(-12).arrayBuffer()])
+    if (pngIsTruncated(new Uint8Array(head), new Uint8Array(tail))) throw new TileCorruptError()
+    return createImageBitmap(blob)
   },
   stitch(tiles, widthPx, heightPx) {
     const canvas = document.createElement('canvas')

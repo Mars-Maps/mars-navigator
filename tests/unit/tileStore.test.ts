@@ -126,8 +126,53 @@ describe('TileStore', () => {
     f.fail('4/0/1', 'error')
     await tick()
     store.update({ zoom: 4, tiles: [tile(4, 0, 0), tile(4, 0, 1)] })
-    expect(f.order).toEqual(['4/0/0', '4/0/1'])
+    // Neither is asked for again; the given-up tile's parent is, once, in its place.
+    expect(f.order).toEqual(['4/0/0', '4/0/1', '3/0/0'])
     expect(store.getSnapshot()).toEqual([])
+  })
+
+  it('loads the parent of a given-up tile in its place and draws it as the stand-in', async () => {
+    const f = fakeDetail()
+    const { make } = makeFactory()
+    const store = new TileStore(f.detail, make, 256, 6)
+    const want = () => store.update({ zoom: 4, tiles: [tile(4, 2, 2), tile(4, 2, 3), tile(4, 2, 4)] })
+    want()
+    f.finish('4/2/4')
+    // Two given-up tiles under one parent ask for it once; the third tile is whole.
+    f.fail('4/2/2', 'error')
+    f.fail('4/2/3', 'error')
+    await tick()
+    expect(f.order).toEqual(['4/2/2', '4/2/3', '4/2/4', '3/1/1'])
+    // The same view again neither aborts the parent's load nor asks twice.
+    want()
+    expect(f.pending.get('3/1/1')?.signal.aborted).toBe(false)
+    f.finish('3/1/1')
+    await tick()
+    expect(store.getSnapshot().map((s) => [s.key, s.fallback])).toEqual([
+      ['4/2/4', false],
+      ['3/1/1', true],
+    ])
+    want()
+    expect(f.order).toHaveLength(4)
+  })
+
+  it('does not follow a failed parent further up, and drops it when the view moves on', async () => {
+    const f = fakeDetail()
+    const { make } = makeFactory()
+    const store = new TileStore(f.detail, make, 256, 6)
+    store.update({ zoom: 4, tiles: [tile(4, 2, 2)] })
+    f.fail('4/2/2', 'error')
+    await tick()
+    f.fail('3/1/1', 'error')
+    await tick()
+    expect(f.order).toEqual(['4/2/2', '3/1/1'])
+    // Another given-up tile's parent, still loading, is aborted once its tile is no longer wanted.
+    store.update({ zoom: 4, tiles: [tile(4, 8, 8)] })
+    f.fail('4/8/8', 'error')
+    await tick()
+    const parent = f.pending.get('3/4/4')
+    store.update({ zoom: 4, tiles: [tile(4, 0, 9)] })
+    expect(parent?.signal.aborted).toBe(true)
   })
 
   it('a throwing factory records an error, closes the bitmap and frees the slot', async () => {
@@ -197,7 +242,9 @@ describe('TileStore', () => {
     expect(f.order.filter((k) => k === '4/0/0')).toHaveLength(RETRY_AFTER_MS.length + 1)
     clock += 10 * 60_000
     want()
-    expect(f.order).toHaveLength(RETRY_AFTER_MS.length + 3)
+    // Nothing more for the three tiles; their one parent is asked for, once, in place of the two given up.
+    expect(f.order.filter((k) => k.startsWith('4/'))).toHaveLength(RETRY_AFTER_MS.length + 3)
+    expect(f.order.filter((k) => !k.startsWith('4/'))).toEqual(['3/0/0'])
   })
 
   it('evicts the least recently wanted finished tiles past the cap, disposing them', async () => {

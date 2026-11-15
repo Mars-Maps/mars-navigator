@@ -14,7 +14,9 @@ import {
   validateGroundDetail,
   validateLayerSource,
   type PlacedTile,
+  TileCorruptError,
   TileHttpError,
+  pngIsTruncated,
   type TileIo,
 } from '../../src/data/adapters/LayerAdapter'
 import { CTX_GROUND_DETAIL } from '../../src/data/layers/groundDetailSources'
@@ -381,6 +383,8 @@ describe('loadLayerTile', () => {
     expect(await retryable(new TileHttpError(503))).toBe(true)
     expect(await retryable(new TypeError('Failed to fetch'))).toBe(true)
     expect(await retryable(new TileHttpError(404))).toBe(false)
+    // An incomplete image is what the service has cached: asking again gets the same file.
+    expect(await retryable(new TileCorruptError())).toBe(false)
   })
 
   it('does not fetch when already cancelled', async () => {
@@ -390,5 +394,29 @@ describe('loadLayerTile', () => {
     const r = await loadLayerTile(satellite, 4, 1, 1, controller.signal, f.io)
     expect(r).toEqual({ status: 'error', reason: 'Cancelled', retryable: false })
     expect(f.requested).toEqual([])
+  })
+})
+
+describe('pngIsTruncated', () => {
+  const SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+  const END = [0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]
+  const bytes = (...b: number[]) => new Uint8Array(b)
+
+  it('passes a PNG that ends with its IEND chunk', () => {
+    expect(pngIsTruncated(bytes(...SIGNATURE), bytes(...END))).toBe(false)
+    expect(pngIsTruncated(bytes(...SIGNATURE, 0, 0, 0, 13), bytes(7, 7, ...END))).toBe(false)
+  })
+
+  it('catches a PNG cut off before its end, as the CTX service sends round Jezero', () => {
+    // The last twelve bytes of tile 11/813/2928 as served on 2026-11-15: image data, no IEND.
+    const served = bytes(0x68, 0x53, 0x40, 0x19, 0x75, 0x76, 0xa1, 0xf6, 0x01, 0x08, 0x40, 0x52)
+    expect(pngIsTruncated(bytes(...SIGNATURE), served)).toBe(true)
+    expect(pngIsTruncated(bytes(...SIGNATURE), bytes(...END.slice(0, 11)))).toBe(true)
+    expect(pngIsTruncated(bytes(...SIGNATURE), bytes())).toBe(true)
+  })
+
+  it('does not judge a file that is not a PNG', () => {
+    expect(pngIsTruncated(bytes(0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46), bytes(1, 2, 3))).toBe(false)
+    expect(pngIsTruncated(bytes(), bytes())).toBe(false)
   })
 })
