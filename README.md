@@ -13,28 +13,37 @@ account, no API key.
 
 ## What it does
 
-- **A 3D globe of Mars.** The globe provides four NASA Mars Trek base layers
-  covering satellite imagery, elevation, thermal data and geology.
-  Search for a named place, measure a distance, or cut a terrain
-  profile between two points.
-- **Routes over real terrain.** Pick two points and the route search finds a
-  way between them over the elevation model, with its distance, slopes,
-  hazards and the metabolic cost of walking it.
-- **Plan a walk.** Pick a landing site on a map coloured by how flat the
-  ground is, set the mission (maximum slope, samples, energy, duration), and
-  get three scientific walks side by side:
-  - over the flat bedrock of the crater floor;
-  - from a crater rim down to the floor, across the geologic map's units;
-  - to the Perseverance rover's own waypoints.
+Mars Navigator brings together planetary mapping, terrain analysis and mission planning in a single interactive application. Users can explore the Martian surface, investigate terrain conditions, compare routes and follow planned walks using publicly available scientific datasets.
 
-  Each walk shows its sample points, time and energy against the settings.
-- **Walk it.** Follow the walk in a first-person view of the surface, built
-  from official elevation models and orbital imagery, with a heads-up
-  display, stop cards and the Perseverance rover's own photos taken nearby.
-- **Conditions on the ground.** A modelled surface temperature through the
-  Martian day, next to the rovers' own measurements at Jezero and Gale; the
-  atmosphere's radiation shielding and the local solar time at a point; and
-  the sun's height in the sky during the walk.
+### Explore Mars in 3D
+
+The interactive globe provides four base map layers through NASA Mars Trek: satellite imagery, elevation, thermal information and geology. Users can search for named locations, measure distances and generate terrain profiles between selected points.
+
+### Plan routes across Martian terrain
+
+Users select a starting location and a destination to calculate a route across the available elevation model. The route analysis reports distance, terrain slope, potential hazards and estimated metabolic energy expenditure. These measurements help users understand the physical demands and limitations of a proposed walk.
+
+### Compare scientific walking scenarios
+
+The mission planner allows users to choose a landing site using a map that rates terrain based on slope and crater characteristics. Users can then configure mission requirements, including maximum slope, sampling objectives, energy and duration.
+
+The application compares three walking scenarios:
+
+- **Crater-floor exploration:** A walk across the relatively flat bedrock of the crater floor.
+- **Rim-to-floor traverse:** A route descending from the crater rim toward the floor while crossing mapped geological units.
+- **Rover waypoint exploration:** A walk connecting locations associated with Perseverance's recorded traverse.
+
+Each scenario presents sampling points and estimates of travel time and energy requirements in relation to the selected mission settings.
+
+### Experience the surface
+
+The first-person view allows users to follow a planned route through a representation of the Martian surface based on official elevation models and orbital imagery. A heads-up display, stop information cards and nearby Perseverance photographs provide additional context during navigation.
+
+### Examine environmental conditions
+
+Mars Navigator also presents environmental information relevant to surface exploration. This includes modelled surface temperature across the Martian day, comparisons with rover measurements at Jezero and Gale, atmospheric radiation shielding relative to Gale, local solar time and the Sun's elevation during a walk.
+
+The application distinguishes scientific measurements from calculated or simulated information, allowing users to understand the origin and limitations of the displayed values.
 
 ## A look inside
 
