@@ -155,6 +155,19 @@ function searchedOption(
       })
     })
   })
+  // Every node the path walks, not only its turns: a hazard scan of the turns alone would
+  // average a straight run into one stretch and miss steep ground inside it.
+  const walked: SurfacePoint[] = []
+  legs.forEach((leg, l) => {
+    leg.walked.forEach((node, n) => {
+      if (l > 0 && n === 0) return
+      walked.push({
+        id: `${strategy}-w${walked.length}`,
+        coordinate: node.coordinate,
+        elevationMeters: official(node.heightM, leg.models[node.model].source),
+      })
+    })
+  })
   const steps = legs.flatMap((leg) => leg.steps)
   const distanceKm = steps.reduce((sum, step) => sum + step.km, 0)
   const hours = steps.reduce((sum, step) => sum + step.km / suitedWalkingKmh(step.s), 0)
@@ -181,7 +194,7 @@ function searchedOption(
       durationHours: derived(hours, `Sum over the path's steps of length over walking speed. ${WALKING_SPEED_METHOD}`),
       metabolicEnergyKcal: derived(kcal, `Sum over the path's steps of length times the cost of walking its slope. ${METABOLIC_COST_METHOD}`),
     },
-    // The path's nodes carry heights, so the shielding scan runs along it; `points` have none.
-    hazards: detectHazards(path),
+    // The walked nodes carry heights, so the scans run along every step; `points` have none.
+    hazards: detectHazards(walked),
   }
 }

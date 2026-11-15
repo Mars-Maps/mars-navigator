@@ -13,7 +13,7 @@ import {
   type RadiationHazard,
   type RadiationLevel,
 } from '../../../domain'
-import { ClassificationBadge } from '../../../components/ClassificationBadge'
+import { ClassificationBadge, InfoMark } from '../../../components/ClassificationBadge'
 import { Methodology, MethodologyItem } from '../../../components/Methodology'
 import { WarningGlyph } from '../../../components/WarningGlyph'
 import { ClassifiedValue } from '../ClassifiedValue'
@@ -118,7 +118,7 @@ export function RadiationField({ reading, doseReference }: { reading: RadiationR
 /**
  * One radiation hazard on a leg, in two short lines: the level and
  * the atmosphere overhead at the leg's highest point, and where that is. The
- * rule's whole sentence is the warning's hover text and in the methodology.
+ * warning is said in a few words on show, with the rule's whole sentence in the mark beside it.
  * A hazard with no figure is ground not checked, and says that instead.
  */
 export function RadiationHazardNote({ hazard }: { hazard: RadiationHazard }) {
@@ -136,11 +136,16 @@ export function RadiationHazardNote({ hazard }: { hazard: RadiationHazard }) {
   const level = radiationLevel(hazard.magnitude.value)
   return (
     <span className="flex flex-col gap-0.5">
-      <span data-radiation-warning="" title={SHIELDING_WARNING_TEXT} className="inline-flex flex-wrap items-center gap-x-1.5 text-caption">
+      <span data-radiation-warning="" className="inline-flex flex-wrap items-center gap-x-1.5 text-caption">
         <WarningGlyph className="size-4 shrink-0 text-danger" />
         <span className="text-ink-muted">Atmosphere overhead</span>
         {level && <RadiationLevelWord level={level} />}
         <ClassifiedValue value={hazard.magnitude} format={formatShielding} />
+      </span>
+      {/* The warning in words, on show: a walk leg and the stop card have no Methodology button to carry it. */}
+      <span className="inline-flex flex-wrap items-center gap-x-1.5 text-caption text-danger">
+        {SHIELDING_WARNING_SHORT}
+        <InfoMark detail={`${SHIELDING_WARNING_TEXT}. ${SHIELDING_WARNING_BASIS}`} />
       </span>
       <span className="text-caption tabular-nums text-ink-subtle">
         {`Highest point ${formatMarsCoordinate(hazard.coordinate)}`}

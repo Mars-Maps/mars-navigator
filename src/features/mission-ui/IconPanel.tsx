@@ -1,5 +1,6 @@
 import { Suspense, lazy, useRef, type ReactNode } from 'react'
 import { useMissionStore, useSite, type SidePanelId } from '../../state'
+import { ErrorBoundary, FailedPart, LoadingPart } from '../../components/ErrorBoundary'
 import { COMPASS_DIAL_ID } from './CompassDial'
 import { useEscapeLayer } from '../../lib/useEscapeLayer'
 import { useLayerMenuDrag } from './useLayerMenuDrag'
@@ -108,9 +109,11 @@ function MovableLayerMenu({ id }: { id: string }) {
       style={{ translate: `${offset.dx}px ${offset.dy}px` }}
       className="absolute right-full top-(--icons-menu-top) mr-2 max-h-(--icons-menu-max) w-80 overflow-y-auto"
     >
-      <Suspense fallback={null}>
-        <LayerMenu move={move} />
-      </Suspense>
+      <ErrorBoundary fallback={() => <FailedPart what="The layer menu" panel />}>
+        <Suspense fallback={<LoadingPart what="the layer menu" />}>
+          <LayerMenu move={move} />
+        </Suspense>
+      </ErrorBoundary>
     </div>
   )
 }

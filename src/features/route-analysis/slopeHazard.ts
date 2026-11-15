@@ -1,7 +1,7 @@
 import { SUITED_SLOPE_LIMIT, derived, isAvailable, unavailable, type Classified, type Hazard, type SurfacePoint } from '../../domain'
 import { SLOPE_BANDS, slopeDegrees } from './profileSlope'
 import { surfaceDistanceKm } from './routeDistance'
-import { describeKm } from './terrainSearch'
+import { describeKm, midpoint } from './terrainSearch'
 
 /**
  * The steep slope warning: one rule for a point's slope and for a
@@ -45,7 +45,7 @@ export const NO_HEIGHTS_FOR_SLOPE =
   "No two neighbouring points of this route have a height, so the slope along it was not checked (the straight-line option, and a route still being searched, carry none; a searched route's path does)"
 
 /** How a route's stretches are measured, without the thresholds. */
-export const ROUTE_SLOPE_MEASURE = `The mean slope of each stretch between neighbouring points of the route's path: the difference of their heights over the ground distance between them, uphill and downhill alike. On a searched route the points are where the path turns, so steeper ground inside a long stretch is averaged out; the search itself walks no step over ${SUITED_SLOPE_LIMIT.deg}°. Neighbouring steep stretches make one warning, at the middle of the steepest`
+export const ROUTE_SLOPE_MEASURE = `The mean slope of each stretch between neighbouring points of the route's path: the difference of their heights over the ground distance between them, uphill and downhill alike. On a searched route the points are every node the search walked, about one cell of the elevation model apart, so each step is measured on its own; ground steeper over less than a step is not seen, and the search itself walks no step over ${SUITED_SLOPE_LIMIT.deg}°. Neighbouring steep stretches make one warning, at the middle of the steepest`
 
 export const ROUTE_SLOPE_METHOD = `${ROUTE_SLOPE_MEASURE}. ${SLOPE_WARNING_BASIS}`
 
@@ -53,7 +53,8 @@ export const ROUTE_SLOPE_METHOD = `${ROUTE_SLOPE_MEASURE}. ${SLOPE_WARNING_BASIS
  * The steep stretches along a route's points. Each run of neighbouring
  * steep stretches is one hazard, with the steepest stretch's mean slope, at
  * that stretch's middle. A stretch with no height at either end is not
- * checked and raises nothing. UNAVAILABLE when no stretch could be measured.
+ * checked and raises nothing; one of no length (a stop on its own node) is
+ * no stretch, and does not split a run. UNAVAILABLE when no stretch could be measured.
  */
 export function routeSlopeHazards(points: readonly SurfacePoint[]): Classified<Hazard[]> {
   type Run = { deg: number; from: number; km: number; lengthKm: number }
@@ -65,6 +66,7 @@ export function routeSlopeHazards(points: readonly SurfacePoint[]): Classified<H
     const a = points[i - 1]
     const b = points[i]
     const runKm = surfaceDistanceKm(a.coordinate, b.coordinate)
+    if (!(runKm > 0)) continue
     const startKm = km
     km += runKm
     const deg =
@@ -96,7 +98,8 @@ export function routeSlopeHazards(points: readonly SurfacePoint[]): Classified<H
         id: `route-slope-${n + 1}`,
         kind: 'slope',
         unit: SLOPE_HAZARD_UNIT,
-        coordinate: { latitude: (a.latitude + b.latitude) / 2, longitudeEast: (a.longitudeEast + b.longitudeEast) / 2 },
+        // Wrapped, so a stretch across 0°/360°E has its middle between its ends, not at 180°E.
+        coordinate: midpoint(a, b),
         magnitude: derived(
           run.deg,
           `The steepest stretch of ${describeKm(run.lengthKm)} of steep ground starting ${describeKm(run.km)} along the route. ${ROUTE_SLOPE_METHOD}`,

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { SHIELDING_WARNING_TEXT, derived, type MarsCoordinate, type RouteOption, type RouteRequest } from '../../src/domain'
+import { SHIELDING_METHOD, SHIELDING_WARNING_TEXT, derived, type MarsCoordinate, type RouteOption, type RouteRequest } from '../../src/domain'
 import { planRouteOptions } from '../../src/app/planRoute'
 import { minimizesForNavigation } from '../../src/features/mars-3d/captionAlerts'
 import { HazardsPanel } from '../../src/features/mission-ui/navigation/HazardsPanel'
@@ -21,6 +21,8 @@ const withHazards = (hazards: RouteOption['hazards']): RouteOption => ({ ...rout
 const heading = (html: string) => html.match(/<h2[^>]*>Hazards<\/h2>(.*?)<\/div>/)![1]
 const visible = visibleText
 const hidden = methodologyText
+// As `detectHazards` words a scan: the kinds it ran, each with its method.
+const SCAN = 'Scanned for slope: fixture slope scan; radiation: fixture radiation scan'
 
 describe('HazardsPanel in the navigation column', () => {
   it('puts a one-line state on the heading line', () => {
@@ -32,7 +34,7 @@ describe('HazardsPanel in the navigation column', () => {
     expect(heading(renderToStaticMarkup(<HazardsPanel route={route} />))).toContain(
       'Not yet scanned',
     )
-    const none = withHazards(derived([], 'fixture scan'))
+    const none = withHazards(derived([], SCAN))
     expect(heading(renderToStaticMarkup(<HazardsPanel route={none} />))).toContain(
       'Steep slope and radiation: none found',
     )
@@ -42,15 +44,15 @@ describe('HazardsPanel in the navigation column', () => {
     const SEPARATOR = /<span aria-hidden="true"[^>]*>·<\/span>/
     expect(heading(renderToStaticMarkup(<HazardsPanel route={null} />))).toMatch(SEPARATOR)
     expect(heading(renderToStaticMarkup(<HazardsPanel route={route} />))).toMatch(SEPARATOR)
-    expect(heading(renderToStaticMarkup(<HazardsPanel route={withHazards(derived([], 'fixture scan'))} />))).toMatch(SEPARATOR)
+    expect(heading(renderToStaticMarkup(<HazardsPanel route={withHazards(derived([], SCAN))} />))).toMatch(SEPARATOR)
   })
 
   it('keeps the long words out of the panel, behind one Methodology button', () => {
     expect(renderToStaticMarkup(<HazardsPanel route={null} />)).not.toContain('data-methodology')
-    const none = renderToStaticMarkup(<HazardsPanel route={withHazards(derived([], 'fixture scan'))} />)
+    const none = renderToStaticMarkup(<HazardsPanel route={withHazards(derived([], SCAN))} />)
     expect(none.match(/<button[^>]*data-methodology=""/g)).toHaveLength(1)
     // What is shown without a click: the heading, the one-line state and the button's word.
-    expect(visible(none)).toBe('Hazards·Steep slope and radiation: none foundMethodology')
+    expect(visible(none)).toBe('Hazardsi·Steep slope and radiation: none foundMethodology')
     // Closed, the explanation is in the markup but hidden.
     expect(hidden(none)).toContain('How the hazards were scanned')
     expect(hidden(none)).toContain('Not scanned for')
@@ -90,7 +92,7 @@ describe('HazardsPanel in the navigation column', () => {
 describe('HazardsPanel: what the route search kept off the path', () => {
   const signal = new AbortController().signal
   const request = { departure: at(0, 0), stops: [], destination: at(1, 0) }
-  const scanned = (option: RouteOption, hazards: RouteOption['hazards'] = derived([], 'fixture scan')) => ({
+  const scanned = (option: RouteOption, hazards: RouteOption['hazards'] = derived([], SCAN)) => ({
     ...option,
     hazards,
   })
@@ -150,5 +152,38 @@ describe('minimizesForNavigation: the caption on entering navigation', () => {
     expect(minimizesForNavigation(['route-line', 'layer-unavailable:thermal'])).toBe(false)
     expect(minimizesForNavigation(['base-unavailable:geology'])).toBe(false)
     expect(minimizesForNavigation(['sun-unavailable'])).toBe(false)
+  })
+})
+
+describe('HazardsPanel says what this scan did (review of the hazards panel)', () => {
+  const noSlope = withHazards(
+    derived([], 'Scanned for radiation: fixture radiation scan. Not scanned: slope (fixture: no heights for the slope); dust (dust detection not implemented)'),
+  )
+
+  it('carries the scan as DERIVED, with its own method in the mark', () => {
+    const html = renderToStaticMarkup(<HazardsPanel route={withHazards(derived([], SCAN))} />)
+    expect(heading(html)).toContain('DERIVED')
+    expect(html).toContain('fixture slope scan')
+  })
+
+  it('never says "none found" of a kind this scan could not run', () => {
+    const html = renderToStaticMarkup(<HazardsPanel route={noSlope} />)
+    expect(visible(html)).toContain('Radiation: none found')
+    expect(visible(html)).not.toContain('Steep slope')
+    expect(hidden(html)).toContain('Steep slope: not scanned on this route')
+    expect(hidden(html)).toContain('fixture: no heights for the slope')
+    expect(hidden(html)).not.toContain('Steep slope: how it is measured')
+  })
+
+  it('keeps the shielding calculation and its caveat within reach when nothing was found', () => {
+    const html = renderToStaticMarkup(<HazardsPanel route={withHazards(derived([], SCAN))} />)
+    expect(hidden(html)).toContain(SHIELDING_METHOD)
+  })
+
+  it('marks a steep stretch in the steep colour and only one over the cited limit in red', () => {
+    const slope = (id: string, deg: number) => ({ id, kind: 'slope' as const, coordinate: A, magnitude: derived(deg, 'fixture slope'), unit: '°' })
+    const html = renderToStaticMarkup(<HazardsPanel route={withHazards(derived([slope('h1', 17), slope('h2', 23)], SCAN))} />)
+    const glyphs = html.match(/<svg[^>]*class="size-4 shrink-0 text-[a-z-]+"/g) ?? []
+    expect(glyphs.map((g) => g.match(/text-[a-z-]+/)![0])).toEqual(['text-slope-steep', 'text-danger'])
   })
 })

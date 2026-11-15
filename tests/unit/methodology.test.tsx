@@ -79,3 +79,14 @@ describe('SteepSlopeWarning', () => {
     expect(methodologyText(html)).toContain("the project's own band")
   })
 })
+
+describe('Methodology buttons can be told apart', () => {
+  it('names each button by what its card explains', () => {
+    const html = renderToStaticMarkup(
+      <Methodology title="How the hazards were scanned">
+        <MethodologyItem>Fixture.</MethodologyItem>
+      </Methodology>,
+    )
+    expect(html).toContain('aria-label="Methodology: How the hazards were scanned"')
+  })
+})

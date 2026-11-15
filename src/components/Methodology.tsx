@@ -1,4 +1,5 @@
 import { Suspense, lazy, useId, useRef, useState, type ReactNode } from 'react'
+import { ErrorBoundary } from './ErrorBoundary'
 
 // The card is asked for by a click, so its code is not in the first load.
 const MethodologyCard = lazy(() => import('./MethodologyCard').then((m) => ({ default: m.MethodologyCard })))
@@ -44,6 +45,7 @@ export function Methodology({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         title={title}
+        aria-label={`${label}: ${title}`}
         onClick={(e) => (open ? close(false) : setAnchor(e.currentTarget.getBoundingClientRect()))}
         className={`inline-flex shrink-0 items-center rounded-control border px-1.5 py-px align-middle text-micro font-medium uppercase whitespace-nowrap transition-colors duration-(--duration-fast) ${
           open
@@ -54,11 +56,21 @@ export function Methodology({
         {label}
       </button>
       {open ? (
-        <Suspense fallback={null}>
-          <MethodologyCard id={id} title={title} anchor={anchor} trigger={button} onClose={close}>
-            {children}
-          </MethodologyCard>
-        </Suspense>
+        // The card is a chunk of its own, and a chunk can fail to load (a tab left open across a
+        // deploy). The explanation is already here, so it is then shown in place, never lost.
+        <ErrorBoundary fallback={() => <InPlace id={id} title={title}>{children}</InPlace>}>
+          <Suspense
+            fallback={
+              <span role="status" className="ml-1.5 text-micro text-ink-muted">
+                Loading…
+              </span>
+            }
+          >
+            <MethodologyCard id={id} title={title} anchor={anchor} trigger={button} onClose={close}>
+              {children}
+            </MethodologyCard>
+          </Suspense>
+        </ErrorBoundary>
       ) : (
         <span hidden data-methodology-text="">
           {title}
@@ -66,6 +78,16 @@ export function Methodology({
         </span>
       )}
     </>
+  )
+}
+
+/** The explanation under its button, for when the card's own code could not be loaded. */
+function InPlace({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <span id={id} role="note" data-methodology-in-place="" className="mt-1 flex w-full basis-full flex-col gap-2 text-left">
+      <span className="text-caption font-semibold text-ink">{title}</span>
+      {children}
+    </span>
   )
 }
 

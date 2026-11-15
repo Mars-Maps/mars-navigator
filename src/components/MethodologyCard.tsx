@@ -55,10 +55,19 @@ export function MethodologyCard({
       onClose(false)
     }
     const onResize = () => onClose(false)
+    // Focus that leaves both the card and its button (Tab past the end) closes the card,
+    // so it never stays open behind another control or beside a second card.
+    const onFocus = (e: FocusEvent) => {
+      const target = e.target as Node
+      if (box.current?.contains(target) || trigger.current?.contains(target)) return
+      onClose(false)
+    }
+    document.addEventListener('focusin', onFocus)
     document.addEventListener('keydown', onKey, true)
     document.addEventListener('pointerdown', onPointer, true)
     window.addEventListener('resize', onResize)
     return () => {
+      document.removeEventListener('focusin', onFocus)
       document.removeEventListener('keydown', onKey, true)
       document.removeEventListener('pointerdown', onPointer, true)
       window.removeEventListener('resize', onResize)
@@ -72,6 +81,9 @@ export function MethodologyCard({
       role="dialog"
       aria-label={title}
       tabIndex={-1}
+      // A portal's events still bubble to its React parents: keys pressed in the card
+      // must not page or steer the panel it was opened from.
+      onKeyDown={(e) => e.stopPropagation()}
       // Off screen until measured, so the first paint is already in place.
       style={pos ? { left: pos.left, top: pos.top } : { left: -10000, top: -10000 }}
       // z-40: above the context menu (z-30), as the provenance tooltip is.

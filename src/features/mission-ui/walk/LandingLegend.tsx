@@ -56,6 +56,8 @@ export function LandingLegend({ colours }: { colours: LandingColoursStatus }) {
     <section aria-label="Landing colours on the map" className="flex flex-col gap-1 border-t border-line/60 pt-2">
       <p className="flex flex-wrap items-center gap-1.5 text-caption text-ink-subtle">
         <span>Landing colours on the map</span>
+        {/* The colours are derived: the mark carries the calculation, the button the plain words. */}
+        <ClassificationBadge classification="DERIVED" detail={colours.method} />
         <Methodology title="How the landing colours are worked out">
           <MethodologyItem heading="What they are">{LANDING_LEGEND.note}</MethodologyItem>
           <MethodologyItem heading="Inside the crater">{CRATER_INTERIOR_LEGEND}</MethodologyItem>

@@ -1,4 +1,5 @@
 import {
+  SHIELDING_METHOD,
   SHIELDING_WARNING_BASIS,
   SHIELDING_WARNING_TEXT,
   SUITED_SLOPE_LIMIT,
@@ -60,6 +61,8 @@ export function HazardsPanel({ route }: { route: RouteOption | null }) {
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
           <h2 className="text-body font-semibold text-ink">Hazards</h2>
           {list && <span className="text-body text-ink-subtle">· {list.length}</span>}
+          {/* The scan is derived, and its own method (the kinds scanned, the kinds not, and why) is its mark. */}
+          {hazards?.classification === 'DERIVED' && <ClassificationBadge classification="DERIVED" detail={hazards.method} />}
           {hazards?.classification === 'UNAVAILABLE' && minimized && (
             <ClassificationBadge classification="UNAVAILABLE" detail={hazards.reason} />
           )}
@@ -108,9 +111,8 @@ function HazardEntry({ hazard }: { hazard: Hazard }) {
   return (
     <>
       <p className="flex flex-wrap items-center gap-x-1.5">
-        {hazard.kind === 'slope' && (
-          <WarningGlyph className="size-4 shrink-0 text-danger" />
-        )}
+        {/* The project's steep band in its own colour, as the point menu has it; red only over the cited limit. */}
+        {hazard.kind === 'slope' && <WarningGlyph className={`size-4 shrink-0 ${over ? 'text-danger' : 'text-slope-steep'}`} />}
         <span className="font-medium text-ink">{HAZARD_LABEL[hazard.kind]}</span>
         <ClassifiedValue value={magnitude} format={(m) => formatMagnitude(m, hazard.unit)} />
         {over && (
@@ -141,10 +143,19 @@ function HazardsState({ route }: { route: RouteOption | null }) {
       </p>
     )
   }
-  // The kinds come from the detector table, not from this result: the
-  // detectors that are built all read the route's heights, so a DERIVED list
-  // means they ran. The scan's own words are in the methodology.
-  return <p className="text-body text-ink-muted">{capitalise(listKinds(SCANNED_HAZARD_KINDS))}: none found</p>
+  // Only the kinds this scan ran: a detector that could not run on this route is not "none found".
+  const kinds = SCANNED_HAZARD_KINDS.filter((k) => scannedFor(route.hazards, k))
+  return <p className="text-body text-ink-muted">{capitalise(listKinds(kinds))}: none found</p>
+}
+
+/**
+ * Whether this scan ran the detector of `kind`, read from the scan's own
+ * method (`detectHazards` names each kind it scanned, then those it did not).
+ */
+function scannedFor(hazards: RouteOption['hazards'], kind: HazardKind): boolean {
+  if (hazards.classification !== 'DERIVED') return false
+  const [ran] = hazards.method.split('. Not scanned: ')
+  return ran.startsWith(`Scanned for ${kind}: `) || ran.includes(`; ${kind}: `)
 }
 
 const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -157,6 +168,15 @@ const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
  * steep slope and a radiation warning mean. A route that was not searched,
  * or a map not read, has nothing kept off.
  */
+/** Why this scan did not run the detector of `kind`, in the scan's own words. */
+function notScannedReason(hazards: RouteOption['hazards'], kind: HazardKind): string {
+  const fallback = 'This scan could not run it on this route'
+  if (hazards.classification !== 'DERIVED') return fallback
+  const notScanned = hazards.method.split('. Not scanned: ')[1] ?? ''
+  const at = notScanned.split('; ').find((part) => part.startsWith(`${kind} (`))
+  return at ? at.slice(kind.length + 2, -1) : fallback
+}
+
 export function HazardsMethodology({ route }: { route: RouteOption }) {
   const { hazards } = route
   const kept: Partial<Record<HazardKind, string>> = keptOffBySearch(route)
@@ -167,15 +187,28 @@ export function HazardsMethodology({ route }: { route: RouteOption }) {
         <MethodologyItem heading="Not yet scanned">{hazards.reason}.</MethodologyItem>
       ) : (
         <>
-          <MethodologyItem heading="Steep slope: how it is measured">{ROUTE_SLOPE_MEASURE}.</MethodologyItem>
-          <MethodologyItem heading="Steep slope: when it warns">{SLOPE_WARNING_BASIS}.</MethodologyItem>
-          <MethodologyItem heading="Radiation: how it is measured">
-            At each point of the path with a height, the atmosphere overhead as a fraction of the atmosphere over Gale
-            crater, from the point&rsquo;s elevation. It is a shielding level, never a dose.
-          </MethodologyItem>
-          <MethodologyItem heading="Radiation: when it warns">
-            {SHIELDING_WARNING_TEXT}. {SHIELDING_WARNING_BASIS}.
-          </MethodologyItem>
+          {scannedFor(hazards, 'slope') ? (
+            <>
+              <MethodologyItem heading="Steep slope: how it is measured">{ROUTE_SLOPE_MEASURE}.</MethodologyItem>
+              <MethodologyItem heading="Steep slope: when it warns">{SLOPE_WARNING_BASIS}.</MethodologyItem>
+            </>
+          ) : (
+            <MethodologyItem heading="Steep slope: not scanned on this route">{notScannedReason(hazards, 'slope')}.</MethodologyItem>
+          )}
+          {scannedFor(hazards, 'radiation') ? (
+            <>
+              <MethodologyItem heading="Radiation: how it is measured">
+                At each point of the path with a height, the atmosphere overhead as a fraction of the atmosphere over
+                Gale crater, from the point&rsquo;s elevation. It is a shielding level, never a dose.
+              </MethodologyItem>
+              <MethodologyItem heading="Radiation: when it warns">
+                {SHIELDING_WARNING_TEXT}. {SHIELDING_WARNING_BASIS}.
+              </MethodologyItem>
+              <MethodologyItem heading="Radiation: calculation">{SHIELDING_METHOD}.</MethodologyItem>
+            </>
+          ) : (
+            <MethodologyItem heading="Radiation: not scanned on this route">{notScannedReason(hazards, 'radiation')}.</MethodologyItem>
+          )}
         </>
       )}
       {UNSCANNED_HAZARD_KINDS.length > 0 && (
