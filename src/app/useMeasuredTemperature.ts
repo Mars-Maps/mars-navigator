@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { loadMedaJezero, type MedaExtract } from '../data/temperature/medaJezero'
 import { GALE_BOUNDS, measuredTemperatureLookup } from '../data/temperature/measuredTemperature'
 import { loadRemsFeed, type RemsSolRecord } from '../data/temperature/remsGaleFeed'
@@ -29,13 +29,19 @@ export function useMeasuredTemperature(): MeasuredTemperatureLookup {
       cancelled = true
     }
   }, [])
+  // Whether the feed is in hand, kept out of the effect's dependencies: a
+  // failed read stores a new UNAVAILABLE answer, and depending on that
+  // answer would start the next read at once, for as long as the feed fails.
+  const galeLoaded = useRef(false)
   useEffect(() => {
-    if (!galeSelected || gale?.classification === 'OFFICIAL') return
+    if (!galeSelected || galeLoaded.current) return
     const controller = new AbortController()
     loadRemsFeed(controller.signal).then((feed) => {
-      if (!controller.signal.aborted) setGale(feed)
+      if (controller.signal.aborted) return
+      if (feed.classification === 'OFFICIAL') galeLoaded.current = true
+      setGale(feed)
     })
     return () => controller.abort()
-  }, [galeSelected, gale])
+  }, [galeSelected])
   return useMemo(() => measuredTemperatureLookup({ jezero, gale }), [jezero, gale])
 }

@@ -52,6 +52,16 @@ const WALKS_PLANNER: WalksPlanner = {
   profile,
 }
 
+// The last run's outcomes and the settings, kept for the page's life: the
+// tool dock unmounts this panel whenever another tool opens, the tools are
+// hidden or the walker stands on the surface, and the walk-plan store keeps
+// the plans meanwhile. `walksOfPlans` drops the outcomes once the store no
+// longer holds their plans, so a kept run never describes other walks.
+const kept: { outcomes: readonly WalkOutcome[]; settings: MissionSettings } = {
+  outcomes: [],
+  settings: DEFAULT_MISSION_SETTINGS,
+}
+
 /**
  * The Plan a walk tool with its planner: the landing site
  * is picked on the map, the settings are set, and the shell plans the three
@@ -76,8 +86,16 @@ export function WalkPlannerPanel() {
   })
   const running = useRef<AbortController | null>(null)
   // Every walk of the last run, planned or not, for step 3's cards.
-  const [outcomes, setOutcomes] = useState<readonly WalkOutcome[]>([])
-  const [settings, setSettings] = useState(DEFAULT_MISSION_SETTINGS)
+  const [outcomes, setOutcomesState] = useState(() => kept.outcomes)
+  const [settings, setSettingsState] = useState(() => kept.settings)
+  const setOutcomes = (next: readonly WalkOutcome[]) => {
+    kept.outcomes = next
+    setOutcomesState(next)
+  }
+  const setSettings = (next: MissionSettings) => {
+    kept.settings = next
+    setSettingsState(next)
+  }
 
   const landingProblem = landing ? landingSiteProblem(landing, DEFAULT_SITE.site) : null
   const progress = { landingReady: landing !== null && landingProblem === null, hasPlan: plan !== null }
