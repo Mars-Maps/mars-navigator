@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { GeologicFeatures } from '../../src/domain'
-import { CRATER_NEAR_KM, mappedObstaclesAlongPath, mergeFeatures } from '../../src/features/route-analysis/mappedObstacles'
+import { CRATER_NEAR_KM } from '../../src/features/route-analysis/mappedObstacles'
+import { mappedObstaclesAlongPath, mergeFeatures } from '../../src/features/route-analysis/routeObstacles'
 import { MAP, at, line, xyOf } from './terrain.helpers'
 
 const features = (f: Partial<GeologicFeatures>): GeologicFeatures => ({ points: [], lines: [], areas: [], ...f })

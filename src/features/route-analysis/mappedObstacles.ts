@@ -33,8 +33,8 @@ export const OBSTACLE_KINDS = {
 /** How near the leg a marked crater is flagged, km. A project choice, not a cited figure. */
 export const CRATER_NEAR_KM = 0.1
 
-const isKind = (kinds: readonly string[], kind: string) => kinds.includes(kind)
-const named = (map: GeologicMap) => `${map.id} (${map.citation})`
+export const isKind = (kinds: readonly string[], kind: string) => kinds.includes(kind)
+export const named = (map: GeologicMap) => `${map.id} (${map.citation})`
 
 /** The leg's mapped obstacles in walking order, ids `${idBase}-obstacle-n`. */
 export function mappedObstacleHazards(
@@ -114,121 +114,6 @@ export function mappedObstacleHazards(
     )
 }
 
-/**
- * The features of several reads as one, each feature once: the boxes of a
- * route's legs overlap at its stops, so the same crater or ridged area comes
- * back in both. Two features are the same when their kind and every
- * coordinate agree. `covers` is not carried: it is each read's own.
- */
-export function mergeFeatures(reads: readonly GeologicFeatures[]): GeologicFeatures {
-  const coordinates = (cs: readonly MarsCoordinate[]) => cs.map((c) => `${c.latitude},${c.longitudeEast}`).join(' ')
-  const once = <T>(items: readonly T[], key: (item: T) => string): T[] => {
-    const seen = new Set<string>()
-    return items.filter((item) => {
-      const k = key(item)
-      if (seen.has(k)) return false
-      seen.add(k)
-      return true
-    })
-  }
-  return {
-    points: once(reads.flatMap((r) => r.points), (f) => `${f.kind}|${coordinates([f.at])}`),
-    lines: once(reads.flatMap((r) => r.lines), (f) => `${f.kind}|${coordinates(f.path)}`),
-    areas: once(reads.flatMap((r) => r.areas), (f) => `${f.kind}|${f.rings.map(coordinates).join('/')}`),
-  }
-}
-
-/**
- * What the map marks along a path of several straight stretches (a
- * searched route, turn to turn and stop to stop), in walking order, ids
- * `${idBase}-obstacle-n`: each marked line crossed; each marked crater within
- * CRATER_NEAR_KM of the path, once, where it is nearest; and marked ground
- * where the path starts on it or a stretch that begins outside first enters
- * it (a stretch that leaves and comes back in is one entry). Crossings and
- * what is inside are worked in one plane at the path's first point, which
- * is exact however long the path: the plane is linear in latitude and
- * longitude. A crater's distance is measured in a plane at the crater.
- */
-export function mappedObstaclesAlongPath(
-  path: readonly MarsCoordinate[],
-  features: GeologicFeatures,
-  idBase: string,
-): Hazard[] {
-  if (path.length < 2) return []
-  const p = tangentPlane(path[0])
-  const pts = path.map(p.project)
-  const found: { at: number; kind: string; coordinate: MarsCoordinate; reason: string }[] = []
-
-  for (const line of features.lines) {
-    if (!isKind(OBSTACLE_KINDS.lines, line.kind)) continue
-    const on = line.path.map(p.project)
-    // A crossing at a turn touches the stretch before it and the one after: named once.
-    const seen = new Set<string>()
-    for (let s = 1; s < pts.length; s++) {
-      for (let k = 1; k < on.length; k++) {
-        const hit = segmentCrossing(pts[s - 1], pts[s], on[k - 1], on[k])
-        if (hit === null) continue
-        const key = `${hit.x.toFixed(4)},${hit.y.toFixed(4)}`
-        if (seen.has(key)) continue
-        seen.add(key)
-        found.push({
-          at: s - 1 + hit.t,
-          kind: line.kind,
-          coordinate: p.unproject(hit),
-          reason: `The route crosses a line marked "${line.kind}" on ${named(line.map)}. The map draws where it runs, not how high or steep it is`,
-        })
-      }
-    }
-  }
-
-  for (const crater of features.points) {
-    if (!isKind(OBSTACLE_KINDS.points, crater.kind)) continue
-    // Its own plane: far from the path's start the first plane's east–west scale is off.
-    const local = tangentPlane(crater.at)
-    const c = local.project(crater.at)
-    const around = path.map(local.project)
-    let best: { at: number; km: number } | null = null
-    for (let s = 1; s < around.length; s++) {
-      const near = nearestOnLeg(c, around[s - 1], around[s])
-      if (best === null || near.km < best.km) best = { at: s - 1 + near.t, km: near.km }
-    }
-    if (best === null || best.km > CRATER_NEAR_KM) continue
-    found.push({
-      at: best.at,
-      kind: crater.kind,
-      coordinate: crater.at,
-      reason: `A point marked "${crater.kind}" on ${named(crater.map)} lies about ${Math.round(best.km * 1000)} m from the route, inside the ${CRATER_NEAR_KM * 1000} m checked (a project choice, not a cited figure). The map marks where it is, not how wide or deep`,
-    })
-  }
-
-  for (const area of features.areas) {
-    if (!isKind(OBSTACLE_KINDS.areas, area.kind)) continue
-    const rings = area.rings.map((ring) => ring.map(p.project))
-    const reason = `The route runs over ground marked "${area.kind}" on ${named(area.map)}, from this point. The map marks where it is, not how rough`
-    let inside = insideRings(pts[0], rings)
-    if (inside) found.push({ at: 0, kind: area.kind, coordinate: path[0], reason })
-    for (let s = 1; s < pts.length; s++) {
-      if (!inside) {
-        const entry = firstInside(pts[s - 1], pts[s], rings)
-        if (entry !== null) found.push({ at: s - 1 + entry.t, kind: area.kind, coordinate: p.unproject(entry), reason })
-      }
-      inside = insideRings(pts[s], rings)
-    }
-  }
-
-  return found
-    .sort((u, v) => u.at - v.at)
-    .map(
-      (f, n): Hazard => ({
-        id: `${idBase}-obstacle-${n + 1}`,
-        kind: 'mapped-obstacle',
-        unit: f.kind,
-        coordinate: f.coordinate,
-        magnitude: unavailable(f.reason),
-      }),
-    )
-}
-
 /** Where segment ab meets segment cd, with `t` the fraction along ab; null when they do not meet. Touching counts. */
 export function segmentCrossing(a: Xy, b: Xy, c: Xy, d: Xy): (Xy & { t: number }) | null {
   const rx = b.x - a.x
@@ -244,7 +129,7 @@ export function segmentCrossing(a: Xy, b: Xy, c: Xy, d: Xy): (Xy & { t: number }
 }
 
 /** The fraction along ab nearest `c`, and how far `c` is from it. */
-function nearestOnLeg(c: Xy, a: Xy, b: Xy): { t: number; km: number } {
+export function nearestOnLeg(c: Xy, a: Xy, b: Xy): { t: number; km: number } {
   const dx = b.x - a.x
   const dy = b.y - a.y
   const len2 = dx * dx + dy * dy
@@ -253,7 +138,7 @@ function nearestOnLeg(c: Xy, a: Xy, b: Xy): { t: number; km: number } {
 }
 
 /** The first point of ab inside the polygon: a itself, or where ab first crosses an edge. Null when it stays outside. */
-function firstInside(a: Xy, b: Xy, rings: readonly Xy[][]): (Xy & { t: number }) | null {
+export function firstInside(a: Xy, b: Xy, rings: readonly Xy[][]): (Xy & { t: number }) | null {
   if (insideRings(a, rings)) return { ...a, t: 0 }
   let first: (Xy & { t: number }) | null = null
   for (const ring of rings) {

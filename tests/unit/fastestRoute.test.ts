@@ -414,6 +414,17 @@ describe('mapped obstacles along a searched route', () => {
     expect(methodOf(option)).toMatch(/Not checked: leg 2: Map service down/)
   })
 
+  it('scans either side of an unread leg separately, with ids that stay unique', async () => {
+    // Three legs of 1 km, each box 1 km wider on every side; the map fails for the middle one's only (east edge near 3 km).
+    const middle = (b: { east: number }) => b.east > at(2.5, 0).longitudeEast && b.east < at(3.5, 0).longitudeEast
+    const stops: [number, number][] = [[1, 0], [2, 0]]
+    const { option } = await plan(flat, request(stops, [3, 0]), { mapPoints: [crater(0.5, 0.05), crater(1.5, 0.05), crater(2.5, 0.05)], mapFailsFor: middle })
+    const found = mapped(option)
+    expect(found.map((h) => xyOf(h.coordinate).x.toFixed(1))).toEqual(['0.5', '2.5'])
+    expect(found.map((h) => h.id)).toEqual(['fastest-obstacle-1', 'fastest-obstacle-2'])
+    expect(option.hazardsPartlyScanned).toEqual({ 'mapped-obstacle': 'Not checked: leg 2: Map service down' })
+  })
+
   it('says the kind was scanned in part when the path leaves the sheet the map covers', async () => {
     // The fixture sheet ends 0.6 km east of the start; the route goes on to 1 km.
     const sheet = { west: at(-5, 0).longitudeEast, east: at(0.6, 0).longitudeEast, south: at(0, -5).latitude, north: at(0, 5).latitude }
@@ -421,6 +432,11 @@ describe('mapped obstacles along a searched route', () => {
     expect(mapped(option)).toHaveLength(1)
     expect(option.hazardsScanned).toEqual(['radiation'])
     expect(option.hazardsPartlyScanned?.['mapped-obstacle']).toMatch(/^Not checked: leg 1: part of it lies outside the map's sheet/)
+    // Wholly outside the sheet, though its box still touches it: not scanned at all, never "in part".
+    const off = await plan(flat, request(), { mapCovers: { ...sheet, east: at(-0.2, 0).longitudeEast } })
+    expect(off.option.hazardsScanned).toEqual(['radiation'])
+    expect(off.option.hazardsPartlyScanned).toBeUndefined()
+    expect(methodOf(off.option)).toMatch(/mapped-obstacle \(The geologic map was not read along the route \(leg 1: it lies outside the map's sheet/)
     // Wholly inside the sheet it is scanned outright.
     const inside = await plan(flat, request(), { mapCovers: { ...sheet, east: at(5, 0).longitudeEast } })
     expect(inside.option.hazardsScanned).toEqual(['radiation', 'mapped-obstacle'])

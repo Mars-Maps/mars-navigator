@@ -1,18 +1,16 @@
 import {
   SUITED_SLOPE_LIMIT,
   derived,
-  insideBounds,
   official,
-  unavailable,
-  type GeologicFeatures,
   type MarsCoordinate,
   type RouteOption,
   type RouteRequest,
   type RouteStrategy,
   type SurfacePoint,
 } from '../../../domain'
-import { HAZARD_DETECTORS, scanHazards, type HazardDetector } from '../hazards'
-import { CRATER_NEAR_KM, OBSTACLE_KINDS, mappedObstaclesAlongPath, mergeFeatures } from '../mappedObstacles'
+import { HAZARD_DETECTORS, scanHazards } from '../hazards'
+import { OBSTACLE_KINDS } from '../mappedObstacles'
+import type { MappedObstacleScan } from '../routeObstacles'
 import { METABOLIC_COST_METHOD, walkingKcalPerKm } from '../metabolicCost'
 import { searchLeg, type SearchedLeg, type StepCost } from '../terrainSearch'
 import { WALKING_SPEED_METHOD, suitedWalkingKmh } from '../walkingSpeed'
@@ -130,7 +128,16 @@ export async function planSearchedRoute(
     }
     legs.push(leg.value)
   }
-  return searchedOption(strategy, request, legs, walked, search)
+  // The scan of what the map marks along the path is read here, on the first
+  // searched route, not with the app: it is the one part of a route's
+  // hazards that is not needed until a route exists. If its file cannot be
+  // read (offline, or a deploy since the page loaded) the route is still
+  // drawn, with mapped obstacles not scanned, as before the scan existed.
+  const mappedObstacleScan = await import('../routeObstacles').then(
+    (m) => m.mappedObstacleScan,
+    () => null,
+  )
+  return searchedOption(strategy, request, legs, walked, search, mappedObstacleScan)
 }
 
 /** The option from the legs found; `numbers` are the legs' places in the user's list, a skipped leg counted. */
@@ -140,6 +147,7 @@ function searchedOption(
   legs: SearchedLeg[],
   numbers: number[],
   search: SearchCost,
+  mappedObstacleScan: MappedObstacleScan | null,
 ): RouteOption {
   const methods = [...new Set(legs.map((leg) => leg.method))]
   const searchMethod = methods.length === 1 ? methods[0] : `Per leg: ${methods.join(' / ')}`
@@ -163,9 +171,10 @@ function searchedOption(
   const hours = steps.reduce((sum, step) => sum + step.km / suitedWalkingKmh(step.s), 0)
   const kcal = steps.reduce((sum, step) => sum + step.km * walkingKcalPerKm(step.s), 0)
   const unchecked = legs.flatMap((leg, l) => (leg.obstacles.checked ? [] : [`leg ${numbers[l]}: ${leg.obstacles.reason}`]))
-  const mapped = mappedObstacleScan(strategy, legs, numbers)
-  const scan = scanHazards(path, { ...HAZARD_DETECTORS, 'mapped-obstacle': mapped.detector })
-  const partly = mapped.gaps.length > 0 && scan.scanned.includes('mapped-obstacle')
+  const mapped = mappedObstacleScan?.(strategy, legs, numbers) ?? null
+  const scan = scanHazards(path, mapped ? { ...HAZARD_DETECTORS, 'mapped-obstacle': mapped.detector } : HAZARD_DETECTORS)
+  const gaps = mapped?.gaps ?? []
+  const partly = gaps.length > 0 && scan.scanned.includes('mapped-obstacle')
   const obstacles =
     unchecked.length === 0
       ? LINES_KEPT_OFF
@@ -192,82 +201,6 @@ function searchedOption(
     hazards: scan.hazards,
     // A kind scanned over part of the route is not "scanned": the panel says which part was not.
     hazardsScanned: partly ? scan.scanned.filter((k) => k !== 'mapped-obstacle') : scan.scanned,
-    ...(partly ? { hazardsPartlyScanned: { 'mapped-obstacle': `Not checked: ${mapped.gaps.join('; ')}` } } : {}),
+    ...(partly ? { hazardsPartlyScanned: { 'mapped-obstacle': `Not checked: ${gaps.join('; ')}` } } : {}),
   }
-}
-
-const POINT_KINDS = OBSTACLE_KINDS.points.map((k) => `"${k}"`).join(', ')
-const AREA_KINDS = OBSTACLE_KINDS.areas.map((k) => `"${k}"`).join(', ')
-
-/**
- * The mapped-obstacle scan of one searched route: what the geologic map
- * marks along its path, from the features each leg's search read. The
- * search keeps the path off the marked lines, so what is left to find is a
- * line crossed on the level join to a stop, a marked crater beside the path
- * and marked ground run over, none of which the search avoids.
- *
- * Legs read one after another are scanned as one path with their features
- * merged, so a crater beside a stop, or ground the route is still on at a
- * stop, is named once. A leg whose map was not read, or that leaves the
- * map's sheet, is a gap: `gaps` names each, and the route then says the kind
- * was scanned in part. With no leg read the scan is UNAVAILABLE, never
- * "none found".
- */
-function mappedObstacleScan(
-  strategy: RouteStrategy,
-  legs: SearchedLeg[],
-  numbers: number[],
-): { detector: HazardDetector; gaps: string[] } {
-  const gaps: string[] = []
-  const unread: string[] = []
-  // Each run of legs read one after another: its path, stop to stop, and what was read along it.
-  const runs: { path: MarsCoordinate[]; reads: GeologicFeatures[] }[] = []
-  let open: (typeof runs)[number] | null = null
-  legs.forEach((leg, l) => {
-    if (!leg.obstacles.checked) {
-      unread.push(`leg ${numbers[l]}: ${leg.obstacles.reason}`)
-      open = null
-      return
-    }
-    const { features } = leg.obstacles
-    const nodes = leg.nodes.map((node) => node.coordinate)
-    const sheet = features.covers
-    if (sheet && nodes.some((c) => !insideBounds(c, sheet))) {
-      gaps.push(`leg ${numbers[l]}: part of it lies outside the map's sheet, where nothing is mapped`)
-    }
-    if (open === null) {
-      open = { path: [], reads: [] }
-      runs.push(open)
-    }
-    // The stop the previous leg ended on is this one's first node.
-    open.path.push(...(open.path.length > 0 ? nodes.slice(1) : nodes))
-    open.reads.push(features)
-  })
-  gaps.unshift(...unread)
-
-  const detector: HazardDetector = {
-    kind: 'mapped-obstacle',
-    requires: ['The geologic map\'s points, lines and areas along the path, read by the route search'],
-    ready: true,
-    detect() {
-      if (runs.length === 0) return unavailable(`The geologic map was not read along the route (${unread.join('; ')})`)
-      // The same feature beside two runs (a crater by a stop either side of an unread leg) is still one hazard.
-      const seen = new Set<string>()
-      const found = runs
-        .flatMap((run) => mappedObstaclesAlongPath(run.path, mergeFeatures(run.reads), strategy))
-        .filter((h) => {
-          const key = `${h.unit}|${h.coordinate.latitude},${h.coordinate.longitudeEast}`
-          if (seen.has(key)) return false
-          seen.add(key)
-          return true
-        })
-        .map((h, n) => ({ ...h, id: `${strategy}-obstacle-${n + 1}` }))
-      const notChecked = gaps.length === 0 ? '' : ` Not checked: ${gaps.join('; ')}`
-      return derived(
-        found,
-        `What the geologic map marks along the path: lines marked ${LINE_KINDS} crossed, points marked ${POINT_KINDS} within ${CRATER_NEAR_KM * 1000} m of the path (a project choice, not a cited figure) and ground marked ${AREA_KINDS} run over. The map says where these are, not how high, wide or rough.${notChecked}`,
-      )
-    },
-  }
-  return { detector, gaps }
 }

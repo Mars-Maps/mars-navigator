@@ -111,6 +111,18 @@ describe('HazardsPanel: what the route search kept off the path', () => {
     expect(line).not.toMatch(/not scanned for [^·]*mapped obstacle/)
   })
 
+  it('follows a list from a partly scanned route with the same words', async () => {
+    const two = { departure: at(0, 0), stops: [at(1, 0)], destination: at(2, 0) }
+    const second = (b: { east: number }) => b.east > at(2.5, 0).longitudeEast
+    const crater = { kind: 'small crater', at: at(0.4, 0.05), map: MAP }
+    const searched = await planFastest(two, fixtureTerrain(() => 0, { mapPoints: [crater], mapFailsFor: second }), signal)
+    const html = renderToStaticMarkup(<HazardsPanel route={searched} />)
+    expect(words(html)).toContain('On the map: small crater')
+    const after = words(html.slice(html.lastIndexOf('</ul>')))
+    expect(after).toContain('Mapped obstacle checked on part of the route only')
+    expect(after).toContain('Not checked: leg 2: Map service down.')
+  })
+
   it('names what the map marks beside a searched route, as a walk leg does', async () => {
     const crater = { kind: 'small crater', at: at(0.5, 0.05), map: MAP }
     const searched = await planFastest(request, fixtureTerrain(() => 0, { mapPoints: [crater] }), signal)
